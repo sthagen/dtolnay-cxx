@@ -349,7 +349,7 @@
 //!
 //! [https://github.com/dtolnay/cxx]: https://github.com/dtolnay/cxx
 
-#![doc(html_root_url = "https://docs.rs/cxx/0.3.4")]
+#![doc(html_root_url = "https://docs.rs/cxx/0.3.5")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -398,7 +398,23 @@ pub use crate::unique_ptr::UniquePtr;
 pub use cxxbridge_macro::bridge;
 
 /// For use in impls of the `ExternType` trait. See [`ExternType`].
+///
+/// [`ExternType`]: trait.ExternType.html
 pub use cxxbridge_macro::type_id;
+
+/// Synonym for `CxxString`.
+///
+/// To avoid confusion with Rust's standard library string you probably
+/// shouldn't import this type with `use`. Instead, write `cxx::String`, or
+/// import and use `CxxString`.
+pub type String = CxxString;
+
+/// Synonym for `CxxVector`.
+///
+/// To avoid confusion with Rust's standard library vector you probably
+/// shouldn't import this type with `use`. Instead, write `cxx::Vector<T>`, or
+/// import and use `CxxVector`.
+pub type Vector<T> = CxxVector<T>;
 
 // Not public API.
 #[doc(hidden)]

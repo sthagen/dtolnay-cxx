@@ -5,6 +5,7 @@
 #include <exception>
 #include <iosfwd>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -175,6 +176,12 @@ public:
   bool empty() const noexcept;
   const T *data() const noexcept;
 
+  const T &operator[](size_t n) const noexcept;
+  const T &at(size_t n) const;
+
+  const T &front() const;
+  const T &back() const;
+
   class const_iterator {
   public:
     using difference_type = ptrdiff_t;
@@ -275,6 +282,9 @@ using try_fn = TryFn<Signature>;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// end public API, begin implementation details
+
+template <typename Exception>
+void panic [[noreturn]] (const char *msg);
 
 template <typename Ret, typename... Args, bool Throws>
 Ret Fn<Ret(Args...), Throws>::operator()(Args... args) const noexcept(!Throws) {
@@ -464,6 +474,30 @@ bool Vec<T>::empty() const noexcept {
 }
 
 template <typename T>
+const T &Vec<T>::operator[](size_t n) const noexcept {
+  auto data = reinterpret_cast<const char *>(this->data());
+  return *reinterpret_cast<const T *>(data + n * this->stride());
+}
+
+template <typename T>
+const T &Vec<T>::at(size_t n) const {
+  if (n >= this->size()) {
+    panic<std::out_of_range>("rust::Vec index out of range");
+  }
+  return (*this)[n];
+}
+
+template <typename T>
+const T &Vec<T>::front() const {
+  return (*this)[0];
+}
+
+template <typename T>
+const T &Vec<T>::back() const {
+  return (*this)[this->size() - 1];
+}
+
+template <typename T>
 const T &Vec<T>::const_iterator::operator*() const noexcept {
   return *static_cast<const T *>(this->pos);
 }
@@ -488,14 +522,14 @@ Vec<T>::const_iterator::operator++(int) noexcept {
 }
 
 template <typename T>
-bool Vec<T>::const_iterator::operator==(const const_iterator &other) const
-    noexcept {
+bool Vec<T>::const_iterator::operator==(
+    const const_iterator &other) const noexcept {
   return this->pos == other.pos;
 }
 
 template <typename T>
-bool Vec<T>::const_iterator::operator!=(const const_iterator &other) const
-    noexcept {
+bool Vec<T>::const_iterator::operator!=(
+    const const_iterator &other) const noexcept {
   return this->pos != other.pos;
 }
 
