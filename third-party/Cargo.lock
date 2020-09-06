@@ -10,12 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b602bfe940d21c130f3895acd65221e8a61270debe89d628b9cb4e3ccb8569b"
-
-[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -65,11 +59,12 @@ dependencies = [
 
 [[package]]
 name = "cxx"
-version = "0.3.5"
+version = "0.4.2"
 dependencies = [
  "cc",
  "cxx-build",
  "cxx-test-suite",
+ "cxxbridge-flags",
  "cxxbridge-macro",
  "link-cplusplus",
  "rustversion",
@@ -78,9 +73,20 @@ dependencies = [
 
 [[package]]
 name = "cxx-build"
-version = "0.3.5"
+version = "0.4.2"
 dependencies = [
- "anyhow",
+ "cc",
+ "codespan-reporting",
+ "cxx-gen",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "cxx-gen"
+version = "0.0.1"
+dependencies = [
  "cc",
  "codespan-reporting",
  "proc-macro2",
@@ -94,13 +100,13 @@ version = "0.0.0"
 dependencies = [
  "cxx",
  "cxx-build",
+ "cxxbridge-flags",
 ]
 
 [[package]]
 name = "cxxbridge-cmd"
-version = "0.3.5"
+version = "0.4.2"
 dependencies = [
- "anyhow",
  "clap",
  "codespan-reporting",
  "proc-macro2",
@@ -109,21 +115,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "cxxbridge-demo"
-version = "0.0.0"
-dependencies = [
- "cxx",
- "cxx-build",
-]
+name = "cxxbridge-flags"
+version = "0.4.2"
 
 [[package]]
 name = "cxxbridge-macro"
-version = "0.3.5"
+version = "0.4.2"
 dependencies = [
  "cxx",
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "demo"
+version = "0.0.0"
+dependencies = [
+ "cxx",
+ "cxx-build",
 ]
 
 [[package]]

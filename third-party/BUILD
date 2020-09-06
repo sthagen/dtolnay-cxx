@@ -6,13 +6,6 @@ load(
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 
 rust_library(
-    name = "anyhow",
-    srcs = glob(["vendor/anyhow-1.0.32/src/**"]),
-    crate_features = ["std"],
-    visibility = ["//visibility:public"],
-)
-
-rust_library(
     name = "bitflags",
     srcs = glob(["vendor/bitflags-1.2.1/src/**"]),
 )
@@ -48,12 +41,6 @@ rust_library(
 rust_library(
     name = "lazy_static",
     srcs = glob(["vendor/lazy_static-1.4.0/src/**"]),
-)
-
-rust_library(
-    name = "link-cplusplus",
-    srcs = glob(["vendor/link-cplusplus-1.0.2/src/**"]),
-    visibility = ["//visibility:public"],
 )
 
 rust_library(

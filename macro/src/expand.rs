@@ -1,32 +1,34 @@
 use crate::syntax::atom::Atom::{self, *};
+use crate::syntax::file::Module;
 use crate::syntax::namespace::Namespace;
 use crate::syntax::report::Errors;
 use crate::syntax::symbol::Symbol;
 use crate::syntax::{
     self, check, mangle, Api, Enum, ExternFn, ExternType, Signature, Struct, Type, TypeAlias, Types,
 };
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse_quote, Error, ItemMod, Result, Token};
+use std::mem;
+use syn::{parse_quote, Result, Token};
 
-pub fn bridge(namespace: &Namespace, mut ffi: ItemMod) -> Result<TokenStream> {
+pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
-    let content = ffi.content.take().ok_or(Error::new(
-        Span::call_site(),
-        "#[cxx::bridge] module must have inline contents",
-    ))?;
-    let ref apis = syntax::parse_items(errors, content.1);
+    let content = mem::take(&mut ffi.content);
+    let trusted = ffi.unsafety.is_some();
+    let ref apis = syntax::parse_items(errors, content, trusted);
     let ref types = Types::collect(errors, apis);
     errors.propagate()?;
+    let namespace = &ffi.namespace;
     check::typecheck(errors, namespace, apis, types);
     errors.propagate()?;
 
-    Ok(expand(namespace, ffi, apis, types))
+    Ok(expand(ffi, apis, types))
 }
 
-fn expand(namespace: &Namespace, ffi: ItemMod, apis: &[Api], types: &Types) -> TokenStream {
+fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
     let mut expanded = TokenStream::new();
     let mut hidden = TokenStream::new();
+    let namespace = &ffi.namespace;
 
     for api in apis {
         if let Api::RustType(ety) = api {
@@ -41,7 +43,8 @@ fn expand(namespace: &Namespace, ffi: ItemMod, apis: &[Api], types: &Types) -> T
             Api::Struct(strct) => expanded.extend(expand_struct(strct)),
             Api::Enum(enm) => expanded.extend(expand_enum(enm)),
             Api::CxxType(ety) => {
-                if !types.enums.contains_key(&ety.ident) {
+                let ident = &ety.ident;
+                if !types.structs.contains_key(ident) && !types.enums.contains_key(ident) {
                     expanded.extend(expand_cxx_type(namespace, ety));
                 }
             }
@@ -686,7 +689,7 @@ fn type_id(namespace: &Namespace, ident: &Ident) -> TokenStream {
 }
 
 fn expand_rust_box(namespace: &Namespace, ident: &Ident) -> TokenStream {
-    let link_prefix = format!("cxxbridge03$box${}{}$", namespace, ident);
+    let link_prefix = format!("cxxbridge04$box${}{}$", namespace, ident);
     let link_uninit = format!("{}uninit", link_prefix);
     let link_drop = format!("{}drop", link_prefix);
 
@@ -715,7 +718,7 @@ fn expand_rust_box(namespace: &Namespace, ident: &Ident) -> TokenStream {
 }
 
 fn expand_rust_vec(namespace: &Namespace, elem: &Ident) -> TokenStream {
-    let link_prefix = format!("cxxbridge03$rust_vec${}{}$", namespace, elem);
+    let link_prefix = format!("cxxbridge04$rust_vec${}{}$", namespace, elem);
     let link_new = format!("{}new", link_prefix);
     let link_drop = format!("{}drop", link_prefix);
     let link_len = format!("{}len", link_prefix);
@@ -761,7 +764,7 @@ fn expand_rust_vec(namespace: &Namespace, elem: &Ident) -> TokenStream {
 
 fn expand_unique_ptr(namespace: &Namespace, ident: &Ident, types: &Types) -> TokenStream {
     let name = ident.to_string();
-    let prefix = format!("cxxbridge03$unique_ptr${}{}$", namespace, ident);
+    let prefix = format!("cxxbridge04$unique_ptr${}{}$", namespace, ident);
     let link_null = format!("{}null", prefix);
     let link_new = format!("{}new", prefix);
     let link_raw = format!("{}raw", prefix);
@@ -834,10 +837,10 @@ fn expand_unique_ptr(namespace: &Namespace, ident: &Ident, types: &Types) -> Tok
 
 fn expand_cxx_vector(namespace: &Namespace, elem: &Ident) -> TokenStream {
     let name = elem.to_string();
-    let prefix = format!("cxxbridge03$std$vector${}{}$", namespace, elem);
+    let prefix = format!("cxxbridge04$std$vector${}{}$", namespace, elem);
     let link_size = format!("{}size", prefix);
     let link_get_unchecked = format!("{}get_unchecked", prefix);
-    let unique_ptr_prefix = format!("cxxbridge03$unique_ptr$std$vector${}{}$", namespace, elem);
+    let unique_ptr_prefix = format!("cxxbridge04$unique_ptr$std$vector${}{}$", namespace, elem);
     let link_unique_ptr_null = format!("{}null", unique_ptr_prefix);
     let link_unique_ptr_raw = format!("{}raw", unique_ptr_prefix);
     let link_unique_ptr_get = format!("{}get", unique_ptr_prefix);

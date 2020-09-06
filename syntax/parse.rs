@@ -1,4 +1,5 @@
 use crate::syntax::discriminant::DiscriminantSet;
+use crate::syntax::file::{Item, ItemForeignMod};
 use crate::syntax::report::Errors;
 use crate::syntax::Atom::*;
 use crate::syntax::{
@@ -11,15 +12,15 @@ use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::{
     Abi, Attribute, Error, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemType,
-    GenericArgument, Ident, Item, ItemEnum, ItemForeignMod, ItemStruct, LitStr, Pat, PathArguments,
-    Result, ReturnType, Token, Type as RustType, TypeBareFn, TypePath, TypeReference, TypeSlice,
+    GenericArgument, Ident, ItemEnum, ItemStruct, LitStr, Pat, PathArguments, Result, ReturnType,
+    Token, Type as RustType, TypeBareFn, TypePath, TypeReference, TypeSlice,
 };
 
 pub mod kw {
     syn::custom_keyword!(Result);
 }
 
-pub fn parse_items(cx: &mut Errors, items: Vec<Item>) -> Vec<Api> {
+pub fn parse_items(cx: &mut Errors, items: Vec<Item>, trusted: bool) -> Vec<Api> {
     let mut apis = Vec::new();
     for item in items {
         match item {
@@ -31,9 +32,9 @@ pub fn parse_items(cx: &mut Errors, items: Vec<Item>) -> Vec<Api> {
                 Ok(enm) => apis.push(enm),
                 Err(err) => cx.push(err),
             },
-            Item::ForeignMod(foreign_mod) => parse_foreign_mod(cx, foreign_mod, &mut apis),
+            Item::ForeignMod(foreign_mod) => parse_foreign_mod(cx, foreign_mod, &mut apis, trusted),
             Item::Use(item) => cx.error(item, error::USE_NOT_ALLOWED),
-            _ => cx.error(item, "unsupported item"),
+            Item::Other(item) => cx.error(item, "unsupported item"),
         }
     }
     apis
@@ -169,16 +170,35 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum) -> Result<Api> {
     }))
 }
 
-fn parse_foreign_mod(cx: &mut Errors, foreign_mod: ItemForeignMod, out: &mut Vec<Api>) {
-    let lang = match parse_lang(foreign_mod.abi) {
+fn parse_foreign_mod(
+    cx: &mut Errors,
+    foreign_mod: ItemForeignMod,
+    out: &mut Vec<Api>,
+    trusted: bool,
+) {
+    let lang = match parse_lang(&foreign_mod.abi) {
         Ok(lang) => lang,
         Err(err) => return cx.push(err),
     };
 
+    match lang {
+        Lang::Rust => {
+            if foreign_mod.unsafety.is_some() {
+                let unsafety = foreign_mod.unsafety;
+                let abi = foreign_mod.abi;
+                let span = quote!(#unsafety #abi);
+                cx.error(span, "extern \"Rust\" block does not need to be unsafe");
+            }
+        }
+        Lang::Cxx => {}
+    }
+
+    let trusted = trusted || foreign_mod.unsafety.is_some();
+
     let mut items = Vec::new();
     for foreign in &foreign_mod.items {
         match foreign {
-            ForeignItem::Type(foreign) => match parse_extern_type(cx, foreign, lang) {
+            ForeignItem::Type(foreign) => match parse_extern_type(cx, foreign, lang, trusted) {
                 Ok(ety) => items.push(ety),
                 Err(err) => cx.push(err),
             },
@@ -221,7 +241,7 @@ fn parse_foreign_mod(cx: &mut Errors, foreign_mod: ItemForeignMod, out: &mut Vec
     out.extend(items);
 }
 
-fn parse_lang(abi: Abi) -> Result<Lang> {
+fn parse_lang(abi: &Abi) -> Result<Lang> {
     let name = match &abi.name {
         Some(name) => name,
         None => {
@@ -238,7 +258,12 @@ fn parse_lang(abi: Abi) -> Result<Lang> {
     }
 }
 
-fn parse_extern_type(cx: &mut Errors, foreign_type: &ForeignItemType, lang: Lang) -> Result<Api> {
+fn parse_extern_type(
+    cx: &mut Errors,
+    foreign_type: &ForeignItemType,
+    lang: Lang,
+    trusted: bool,
+) -> Result<Api> {
     let doc = attrs::parse_doc(cx, &foreign_type.attrs);
     let type_token = foreign_type.type_token;
     let ident = foreign_type.ident.clone();
@@ -252,6 +277,7 @@ fn parse_extern_type(cx: &mut Errors, foreign_type: &ForeignItemType, lang: Lang
         type_token,
         ident,
         semi_token,
+        trusted,
     }))
 }
 

@@ -7,10 +7,7 @@ rust_library(
         ":cxxbridge-macro",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":core-lib",
-        "//third-party:link-cplusplus",
-    ],
+    deps = [":core-lib"],
 )
 
 rust_binary(
@@ -19,7 +16,6 @@ rust_binary(
     data = ["gen/cmd/src/gen/include/cxx.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//third-party:anyhow",
         "//third-party:clap",
         "//third-party:codespan-reporting",
         "//third-party:proc-macro2",
@@ -59,7 +55,20 @@ rust_library(
     data = ["gen/build/src/gen/include/cxx.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//third-party:anyhow",
+        "//third-party:cc",
+        "//third-party:codespan-reporting",
+        "//third-party:proc-macro2",
+        "//third-party:quote",
+        "//third-party:syn",
+    ],
+)
+
+rust_library(
+    name = "lib",
+    srcs = glob(["gen/lib/src/**/*.rs"]),
+    data = ["gen/lib/src/gen/include/cxx.h"],
+    visibility = ["//visibility:public"],
+    deps = [
         "//third-party:cc",
         "//third-party:codespan-reporting",
         "//third-party:proc-macro2",
