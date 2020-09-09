@@ -13,6 +13,7 @@ mod impls;
 pub mod mangle;
 pub mod namespace;
 mod parse;
+pub mod qualified;
 pub mod report;
 pub mod set;
 pub mod symbol;
@@ -86,6 +87,7 @@ pub struct TypeAlias {
 }
 
 pub struct Signature {
+    pub unsafety: Option<Token![unsafe]>,
     pub fn_token: Token![fn],
     pub receiver: Option<Receiver>,
     pub args: Punctuated<Var, Token![,]>,

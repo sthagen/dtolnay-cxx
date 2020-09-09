@@ -242,7 +242,7 @@ using TryFn = Fn<Signature, true>;
 
 #ifndef CXXBRIDGE04_RUST_ERROR
 #define CXXBRIDGE04_RUST_ERROR
-class Error final : std::exception {
+class Error final : public std::exception {
 public:
   Error(const Error &);
   Error(Error &&) noexcept;
@@ -271,7 +271,11 @@ std::ostream &operator<<(std::ostream &, const Str &);
 using string = String;
 using str = Str;
 template <class T>
+using slice = Slice<T>;
+template <class T>
 using box = Box<T>;
+template <class T>
+using vec = Vec<T>;
 using error = Error;
 template <typename Signature, bool Throws = false>
 using fn = Fn<Signature, Throws>;
