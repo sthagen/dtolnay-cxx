@@ -20,10 +20,21 @@ public:
   size_t get_fail();
   const std::vector<uint8_t> &get_v() const;
   std::vector<uint8_t> &get_v();
+  rust::String cOverloadedMethod(int32_t x) const;
+  rust::String cOverloadedMethod(rust::Str x) const;
 
 private:
   size_t n;
   std::vector<uint8_t> v;
+};
+
+struct D {
+  uint64_t d;
+};
+
+struct E {
+  uint64_t e;
+  std::string e_str;
 };
 
 enum COwnedEnum {
@@ -100,5 +111,17 @@ std::unique_ptr<std::string> c_try_return_unique_ptr_string();
 rust::Vec<uint8_t> c_try_return_rust_vec();
 rust::Vec<rust::String> c_try_return_rust_vec_string();
 const rust::Vec<uint8_t> &c_try_return_ref_rust_vec(const C &c);
+
+void c_take_trivial_ptr(std::unique_ptr<D> d);
+void c_take_trivial_ref(const D& d);
+void c_take_trivial(D d);
+void c_take_opaque_ptr(std::unique_ptr<E> e);
+void c_take_opaque_ref(const E& e);
+std::unique_ptr<D> c_return_trivial_ptr();
+D c_return_trivial();
+std::unique_ptr<E> c_return_opaque_ptr();
+
+rust::String cOverloadedFunction(int32_t x);
+rust::String cOverloadedFunction(rust::Str x);
 
 } // namespace tests

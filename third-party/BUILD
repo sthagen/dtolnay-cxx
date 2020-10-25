@@ -1,5 +1,6 @@
 load(
     "//tools/bazel:rust.bzl",
+    glob = "third_party_glob",
     rust_binary = "third_party_rust_binary",
     rust_library = "third_party_rust_library",
 )
@@ -12,7 +13,7 @@ rust_library(
 
 rust_library(
     name = "cc",
-    srcs = glob(["vendor/cc-1.0.59/src/**"]),
+    srcs = glob(["vendor/cc-1.0.61/src/**"]),
     visibility = ["//visibility:public"],
 )
 
@@ -41,11 +42,12 @@ rust_library(
 rust_library(
     name = "lazy_static",
     srcs = glob(["vendor/lazy_static-1.4.0/src/**"]),
+    visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "proc-macro2",
-    srcs = glob(["vendor/proc-macro2-1.0.20/src/**"]),
+    srcs = glob(["vendor/proc-macro2-1.0.24/src/**"]),
     crate_features = [
         "proc-macro",
         "span-locations",
@@ -68,8 +70,15 @@ rust_library(
 )
 
 rust_library(
+    name = "scratch",
+    srcs = glob(["vendor/scratch-1.0.0/src/**"]),
+    rustc_env = {"OUT_DIR": ""},
+    visibility = ["//visibility:public"],
+)
+
+rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.40/src/**"]),
+    srcs = glob(["vendor/syn-1.0.44/src/**"]),
     crate_features = [
         "clone-impls",
         "derive",

@@ -1,9 +1,11 @@
-#include "cxx-test-suite/tests.h"
-#include "cxx-test-suite/lib.rs.h"
+#include "tests/ffi/tests.h"
+#include "tests/ffi/lib.rs.h"
 #include <cstring>
 #include <iterator>
 #include <numeric>
 #include <stdexcept>
+#include <memory>
+#include <string>
 
 extern "C" void cxx_test_suite_set_correct() noexcept;
 extern "C" tests::R *cxx_test_suite_get_box() noexcept;
@@ -365,6 +367,70 @@ extern "C" std::string *cxx_test_suite_get_unique_ptr_string() noexcept {
   return std::unique_ptr<std::string>(new std::string("2020")).release();
 }
 
+rust::String C::cOverloadedMethod(int32_t x) const {
+  return rust::String(std::to_string(x));
+}
+
+rust::String C::cOverloadedMethod(rust::Str x) const {
+  return rust::String(std::string(x));
+}
+
+rust::String cOverloadedFunction(int x) {
+  return rust::String(std::to_string(x));
+}
+
+rust::String cOverloadedFunction(rust::Str x) {
+  return rust::String(std::string(x));
+}
+
+void c_take_trivial_ptr(std::unique_ptr<D> d) {
+  if (d->d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_trivial_ref(const D& d) {
+  if (d.d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+void c_take_trivial(D d) {
+  if (d.d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_opaque_ptr(std::unique_ptr<E> e) {
+  if (e->e == 40) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_opaque_ref(const E& e) {
+  if (e.e == 40 && e.e_str == "hello") {
+    cxx_test_suite_set_correct();
+  }
+}
+
+std::unique_ptr<D> c_return_trivial_ptr() {
+  auto d = std::unique_ptr<D>(new D());
+  d->d = 30;
+  return d;
+}
+
+D c_return_trivial() {
+  D d;
+  d.d = 30;
+  return d;
+}
+
+std::unique_ptr<E> c_return_opaque_ptr() {
+  auto e = std::unique_ptr<E>(new E());
+  e->e = 40;
+  e->e_str = std::string("hello");
+  return e;
+}
+
 extern "C" const char *cxx_run_test() noexcept {
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -399,6 +465,11 @@ extern "C" const char *cxx_run_test() noexcept {
   r_take_rust_string(rust::String("2020"));
   r_take_unique_ptr_string(
       std::unique_ptr<std::string>(new std::string("2020")));
+  r_take_ref_vector(std::vector<uint8_t>{20, 2, 0});
+  std::vector<uint64_t> empty_vector;
+  r_take_ref_empty_vector(empty_vector);
+  empty_vector.reserve(10);
+  r_take_ref_empty_vector(empty_vector);
   r_take_enum(Enum::AVal);
 
   ASSERT(r_try_return_primitive() == 2020);
@@ -415,6 +486,8 @@ extern "C" const char *cxx_run_test() noexcept {
   ASSERT(r2->get() == 2021);
   ASSERT(r2->set(2020) == 2020);
   ASSERT(r2->get() == 2020);
+
+  ASSERT(std::string(rAliasedFunction(2020)) == "2020");
 
   cxx_test_suite_set_correct();
   return nullptr;

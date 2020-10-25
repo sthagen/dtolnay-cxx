@@ -1,3 +1,4 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//tools/bazel:rust.bzl", "rust_binary", "rust_library")
 
 rust_library(
@@ -57,8 +58,10 @@ rust_library(
     deps = [
         "//third-party:cc",
         "//third-party:codespan-reporting",
+        "//third-party:lazy_static",
         "//third-party:proc-macro2",
         "//third-party:quote",
+        "//third-party:scratch",
         "//third-party:syn",
     ],
 )

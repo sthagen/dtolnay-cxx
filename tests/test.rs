@@ -1,3 +1,4 @@
+use cxx_test_suite::extra::ffi2;
 use cxx_test_suite::ffi;
 use std::cell::Cell;
 use std::ffi::CStr;
@@ -180,4 +181,30 @@ extern "C" fn cxx_test_suite_get_box() -> *mut cxx_test_suite::R {
 #[no_mangle]
 unsafe extern "C" fn cxx_test_suite_r_is_correct(r: *const cxx_test_suite::R) -> bool {
     *r == 2020
+}
+
+#[test]
+fn test_rust_name_attribute() {
+    assert_eq!("2020", ffi::i32_overloaded_function(2020));
+    assert_eq!("2020", ffi::str_overloaded_function("2020"));
+    let unique_ptr = ffi::c_return_unique_ptr();
+    assert_eq!("2020", unique_ptr.i32_overloaded_method(2020));
+    assert_eq!("2020", unique_ptr.str_overloaded_method("2020"));
+}
+
+#[test]
+fn test_extern_trivial() {
+    let d = ffi2::c_return_trivial();
+    check!(ffi2::c_take_trivial_ref(&d));
+    check!(ffi2::c_take_trivial(d));
+    let d = ffi2::c_return_trivial_ptr();
+    check!(ffi2::c_take_trivial_ptr(d));
+    cxx::UniquePtr::new(ffi2::D { d: 42 });
+}
+
+#[test]
+fn test_extern_opaque() {
+    let e = ffi2::c_return_opaque_ptr();
+    check!(ffi2::c_take_opaque_ref(e.as_ref().unwrap()));
+    check!(ffi2::c_take_opaque_ptr(e));
 }

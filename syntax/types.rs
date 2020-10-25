@@ -1,7 +1,7 @@
 use crate::syntax::atom::Atom::{self, *};
 use crate::syntax::report::Errors;
 use crate::syntax::set::OrderedSet as Set;
-use crate::syntax::{Api, Derive, Enum, ExternType, Struct, Type, TypeAlias};
+use crate::syntax::{Api, Derive, Enum, ExternFn, ExternType, Impl, Struct, Type, TypeAlias};
 use proc_macro2::Ident;
 use quote::ToTokens;
 use std::collections::{BTreeMap as Map, HashSet as UnorderedSet};
@@ -14,6 +14,8 @@ pub struct Types<'a> {
     pub rust: Set<&'a Ident>,
     pub aliases: Map<&'a Ident, &'a TypeAlias>,
     pub untrusted: Map<&'a Ident, &'a ExternType>,
+    pub required_trivial: Map<&'a Ident, TrivialReason<'a>>,
+    pub explicit_impls: Set<&'a Impl>,
 }
 
 impl<'a> Types<'a> {
@@ -25,6 +27,7 @@ impl<'a> Types<'a> {
         let mut rust = Set::new();
         let mut aliases = Map::new();
         let mut untrusted = Map::new();
+        let mut explicit_impls = Set::new();
 
         fn visit<'a>(all: &mut Set<&'a Type>, ty: &'a Type) {
             all.insert(ty);
@@ -113,9 +116,10 @@ impl<'a> Types<'a> {
                     rust.insert(ident);
                 }
                 Api::CxxFunction(efn) | Api::RustFunction(efn) => {
-                    let ident = &efn.ident;
-                    if !function_names.insert((&efn.receiver, ident)) {
-                        duplicate_name(cx, efn, ident);
+                    // Note: duplication of the C++ name is fine because C++ has
+                    // function overloading.
+                    if !function_names.insert((&efn.receiver, &efn.ident.rust)) {
+                        duplicate_name(cx, efn, &efn.ident.rust);
                     }
                     for arg in &efn.args {
                         visit(&mut all, &arg.ty);
@@ -132,6 +136,44 @@ impl<'a> Types<'a> {
                     cxx.insert(ident);
                     aliases.insert(ident, alias);
                 }
+                Api::Impl(imp) => {
+                    visit(&mut all, &imp.ty);
+                    explicit_impls.insert(imp);
+                }
+            }
+        }
+
+        // All these APIs may contain types passed by value. We need to ensure
+        // we check that this is permissible. We do this _after_ scanning all
+        // the APIs above, in case some function or struct references a type
+        // which is declared subsequently.
+        let mut required_trivial = Map::new();
+        let mut insist_alias_types_are_trivial = |ty: &'a Type, reason| {
+            if let Type::Ident(ident) = ty {
+                if cxx.contains(ident) {
+                    required_trivial.entry(ident).or_insert(reason);
+                }
+            }
+        };
+        for api in apis {
+            match api {
+                Api::Struct(strct) => {
+                    let reason = TrivialReason::StructField(strct);
+                    for field in &strct.fields {
+                        insist_alias_types_are_trivial(&field.ty, reason);
+                    }
+                }
+                Api::CxxFunction(efn) | Api::RustFunction(efn) => {
+                    let reason = TrivialReason::FunctionArgument(efn);
+                    for arg in &efn.args {
+                        insist_alias_types_are_trivial(&arg.ty, reason);
+                    }
+                    if let Some(ret) = &efn.ret {
+                        let reason = TrivialReason::FunctionReturn(efn);
+                        insist_alias_types_are_trivial(&ret, reason);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -143,6 +185,8 @@ impl<'a> Types<'a> {
             rust,
             aliases,
             untrusted,
+            required_trivial,
+            explicit_impls,
         }
     }
 
@@ -176,6 +220,13 @@ impl<'t, 'a> IntoIterator for &'t Types<'a> {
     fn into_iter(self) -> Self::IntoIter {
         self.all.into_iter()
     }
+}
+
+#[derive(Copy, Clone)]
+pub enum TrivialReason<'a> {
+    StructField(&'a Struct),
+    FunctionArgument(&'a ExternFn),
+    FunctionReturn(&'a ExternFn),
 }
 
 fn duplicate_name(cx: &mut Errors, sp: impl ToTokens, ident: &Ident) {

@@ -1,6 +1,7 @@
 use crate::gen::out::OutFile;
 use std::fmt::{self, Display};
 
+/// The complete contents of the "rust/cxx.h" header.
 pub static HEADER: &str = include_str!("include/cxx.h");
 
 pub(super) fn write(out: &mut OutFile, needed: bool, guard: &str) {
@@ -61,7 +62,7 @@ pub struct Includes {
     pub type_traits: bool,
     pub utility: bool,
     pub vector: bool,
-    pub base_tsd: bool,
+    pub basetsd: bool,
 }
 
 impl Includes {
@@ -122,9 +123,9 @@ impl Display for Includes {
         if self.vector {
             writeln!(f, "#include <vector>")?;
         }
-        if self.base_tsd {
+        if self.basetsd {
             writeln!(f, "#if defined(_WIN32)")?;
-            writeln!(f, "#include <BaseTsd.h>")?;
+            writeln!(f, "#include <basetsd.h>")?;
             writeln!(f, "#endif")?;
         }
         Ok(())

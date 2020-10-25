@@ -1,4 +1,6 @@
+use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::fmt::{self, Debug};
 use std::hash::Hash;
 use std::slice;
 
@@ -26,8 +28,20 @@ where
         new
     }
 
-    pub fn contains(&self, value: &T) -> bool {
+    pub fn contains<Q>(&self, value: &Q) -> bool
+    where
+        &'a T: Borrow<Q>,
+        Q: ?Sized + Hash + Eq,
+    {
         self.set.contains(value)
+    }
+
+    pub fn get<Q>(&self, value: &Q) -> Option<&'a T>
+    where
+        &'a T: Borrow<Q>,
+        Q: ?Sized + Hash + Eq,
+    {
+        self.set.get(value).copied()
     }
 }
 
@@ -45,5 +59,14 @@ impl<'s, 'a, T> Iterator for Iter<'s, 'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().copied()
+    }
+}
+
+impl<'a, T> Debug for OrderedSet<&'a T>
+where
+    T: Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.debug_set().entries(self).finish()
     }
 }

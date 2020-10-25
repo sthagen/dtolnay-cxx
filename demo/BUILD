@@ -1,44 +1,21 @@
-load("//tools/bazel:rust.bzl", "rust_binary", "rust_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//tools/bazel:rust.bzl", "rust_binary")
+load("//tools/bazel:rust_cxx_bridge.bzl", "rust_cxx_bridge")
 
 rust_binary(
     name = "demo",
     srcs = glob(["src/**/*.rs"]),
     deps = [
+        ":bridge",
         ":demo-sys",
-        ":gen",
         "//:cxx",
     ],
 )
 
-cc_library(
-    name = "gen",
-    srcs = [":gen-source"],
-    deps = [
-        ":demo-include",
-        ":include",
-    ],
-)
-
-genrule(
-    name = "gen-header",
-    srcs = ["src/main.rs"],
-    outs = ["main.rs.h"],
-    cmd = "$(location //:codegen) --header $< > $@",
-    tools = ["//:codegen"],
-)
-
-genrule(
-    name = "gen-source",
-    srcs = ["src/main.rs"],
-    outs = ["generated.cc"],
-    cmd = "$(location //:codegen) $< > $@",
-    tools = ["//:codegen"],
-)
-
-cc_library(
-    name = "include",
-    hdrs = [":gen-header"],
-    include_prefix = "demo/src",
+rust_cxx_bridge(
+    name = "bridge",
+    src = "src/main.rs",
+    deps = [":demo-include"],
 )
 
 cc_library(
@@ -46,8 +23,8 @@ cc_library(
     srcs = ["src/demo.cc"],
     copts = ["-std=c++14"],
     deps = [
+        ":bridge/include",
         ":demo-include",
-        ":include",
     ],
 )
 

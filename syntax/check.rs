@@ -1,9 +1,10 @@
 use crate::syntax::atom::Atom::{self, *};
 use crate::syntax::namespace::Namespace;
 use crate::syntax::report::Errors;
+use crate::syntax::types::TrivialReason;
 use crate::syntax::{
-    error, ident, Api, Enum, ExternFn, ExternType, Lang, Receiver, Ref, Slice, Struct, Ty1, Type,
-    Types,
+    error, ident, Api, Enum, ExternFn, ExternType, Impl, Lang, Receiver, Ref, Slice, Struct, Ty1,
+    Type, Types,
 };
 use proc_macro2::{Delimiter, Group, Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -45,8 +46,9 @@ fn do_typecheck(cx: &mut Check) {
         match api {
             Api::Struct(strct) => check_api_struct(cx, strct),
             Api::Enum(enm) => check_api_enum(cx, enm),
-            Api::CxxType(ty) | Api::RustType(ty) => check_api_type(cx, ty),
+            Api::CxxType(ety) | Api::RustType(ety) => check_api_type(cx, ety),
             Api::CxxFunction(efn) | Api::RustFunction(efn) => check_api_fn(cx, efn),
+            Api::Impl(imp) => check_api_impl(cx, imp),
             _ => {}
         }
     }
@@ -206,8 +208,21 @@ fn check_api_enum(cx: &mut Check, enm: &Enum) {
     }
 }
 
-fn check_api_type(cx: &mut Check, ty: &ExternType) {
-    check_reserved_name(cx, &ty.ident);
+fn check_api_type(cx: &mut Check, ety: &ExternType) {
+    check_reserved_name(cx, &ety.ident);
+
+    if let Some(reason) = cx.types.required_trivial.get(&ety.ident) {
+        let what = match reason {
+            TrivialReason::StructField(strct) => format!("a field of `{}`", strct.ident),
+            TrivialReason::FunctionArgument(efn) => format!("an argument of `{}`", efn.ident.rust),
+            TrivialReason::FunctionReturn(efn) => format!("a return value of `{}`", efn.ident.rust),
+        };
+        let msg = format!(
+            "needs a cxx::ExternType impl in order to be used as {}",
+            what,
+        );
+        cx.error(ety, msg);
+    }
 }
 
 fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
@@ -270,6 +285,18 @@ fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
     }
 
     check_multiple_arg_lifetimes(cx, efn);
+}
+
+fn check_api_impl(cx: &mut Check, imp: &Impl) {
+    if let Type::UniquePtr(ty) | Type::CxxVector(ty) = &imp.ty {
+        if let Type::Ident(inner) = &ty.inner {
+            if Atom::from(inner).is_none() {
+                return;
+            }
+        }
+    }
+
+    cx.error(imp, "unsupported Self type of explicit impl");
 }
 
 fn check_mut_return_restriction(cx: &mut Check, efn: &ExternFn) {
@@ -338,6 +365,8 @@ fn is_unsized(cx: &mut Check, ty: &Type) -> bool {
         || cx.types.cxx.contains(ident)
             && !cx.types.structs.contains_key(ident)
             && !cx.types.enums.contains_key(ident)
+            && !(cx.types.aliases.contains_key(ident)
+                && cx.types.required_trivial.contains_key(ident))
         || cx.types.rust.contains(ident)
 }
 
@@ -375,8 +404,10 @@ fn describe(cx: &mut Check, ty: &Type) -> String {
                 "struct".to_owned()
             } else if cx.types.enums.contains_key(ident) {
                 "enum".to_owned()
-            } else if cx.types.cxx.contains(ident) {
+            } else if cx.types.aliases.contains_key(ident) {
                 "C++ type".to_owned()
+            } else if cx.types.cxx.contains(ident) {
+                "opaque C++ type".to_owned()
             } else if cx.types.rust.contains(ident) {
                 "opaque Rust type".to_owned()
             } else if Atom::from(ident) == Some(CxxString) {

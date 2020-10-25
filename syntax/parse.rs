@@ -3,17 +3,17 @@ use crate::syntax::file::{Item, ItemForeignMod};
 use crate::syntax::report::Errors;
 use crate::syntax::Atom::*;
 use crate::syntax::{
-    attrs, error, Api, Doc, Enum, ExternFn, ExternType, Lang, Receiver, Ref, Signature, Slice,
-    Struct, Ty1, Type, TypeAlias, Var, Variant,
+    attrs, error, Api, Doc, Enum, ExternFn, ExternType, Impl, Lang, Pair, Receiver, Ref, Signature,
+    Slice, Struct, Ty1, Type, TypeAlias, Var, Variant,
 };
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::{
     Abi, Attribute, Error, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemType,
-    GenericArgument, Ident, ItemEnum, ItemStruct, LitStr, Pat, PathArguments, Result, ReturnType,
-    Token, Type as RustType, TypeBareFn, TypePath, TypeReference, TypeSlice,
+    GenericArgument, Ident, ItemEnum, ItemImpl, ItemStruct, LitStr, Pat, PathArguments, Result,
+    ReturnType, Token, Type as RustType, TypeBareFn, TypePath, TypeReference, TypeSlice,
 };
 
 pub mod kw {
@@ -33,6 +33,10 @@ pub fn parse_items(cx: &mut Errors, items: Vec<Item>, trusted: bool) -> Vec<Api>
                 Err(err) => cx.push(err),
             },
             Item::ForeignMod(foreign_mod) => parse_foreign_mod(cx, foreign_mod, &mut apis, trusted),
+            Item::Impl(item) => match parse_impl(item) {
+                Ok(imp) => apis.push(imp),
+                Err(err) => cx.push(err),
+            },
             Item::Use(item) => cx.error(item, error::USE_NOT_ALLOWED),
             Item::Other(item) => cx.error(item, "unsupported item"),
         }
@@ -69,7 +73,7 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct) -> Result<Api> {
         Fields::Named(fields) => fields,
         Fields::Unit => return Err(Error::new_spanned(item, "unit structs are not supported")),
         Fields::Unnamed(_) => {
-            return Err(Error::new_spanned(item, "tuple structs are not supported"))
+            return Err(Error::new_spanned(item, "tuple structs are not supported"));
         }
     };
 
@@ -221,7 +225,7 @@ fn parse_foreign_mod(
     }
 
     let mut types = items.iter().filter_map(|item| match item {
-        Api::CxxType(ty) | Api::RustType(ty) => Some(&ty.ident),
+        Api::CxxType(ety) | Api::RustType(ety) => Some(&ety.ident),
         Api::TypeAlias(alias) => Some(&alias.ident),
         _ => None,
     });
@@ -296,6 +300,20 @@ fn parse_extern_fn(cx: &mut Errors, foreign_fn: &ForeignItemFn, lang: Lang) -> R
         ));
     }
 
+    let mut doc = Doc::new();
+    let mut cxx_name = None;
+    let mut rust_name = None;
+    attrs::parse(
+        cx,
+        &foreign_fn.attrs,
+        attrs::Parser {
+            doc: Some(&mut doc),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
+            ..Default::default()
+        },
+    );
+
     let mut receiver = None;
     let mut args = Punctuated::new();
     for arg in foreign_fn.sig.inputs.pairs() {
@@ -352,10 +370,12 @@ fn parse_extern_fn(cx: &mut Errors, foreign_fn: &ForeignItemFn, lang: Lang) -> R
     let mut throws_tokens = None;
     let ret = parse_return_type(&foreign_fn.sig.output, &mut throws_tokens)?;
     let throws = throws_tokens.is_some();
-    let doc = attrs::parse_doc(cx, &foreign_fn.attrs);
     let unsafety = foreign_fn.sig.unsafety;
     let fn_token = foreign_fn.sig.fn_token;
-    let ident = foreign_fn.sig.ident.clone();
+    let ident = Pair {
+        cxx: cxx_name.unwrap_or(foreign_fn.sig.ident.clone()),
+        rust: rust_name.unwrap_or(foreign_fn.sig.ident.clone()),
+    };
     let paren_token = foreign_fn.sig.paren_token;
     let semi_token = foreign_fn.semi_token;
     let api_function = match lang {
@@ -396,9 +416,10 @@ fn parse_extern_verbatim(cx: &mut Errors, tokens: &TokenStream, lang: Lang) -> R
         let eq_token: Token![=] = input.parse()?;
         let ty: RustType = input.parse()?;
         let semi_token: Token![;] = input.parse()?;
-        attrs::parse_doc(cx, &attrs);
+        let doc = attrs::parse_doc(cx, &attrs);
 
         Ok(TypeAlias {
+            doc,
             type_token,
             ident,
             eq_token,
@@ -417,6 +438,37 @@ fn parse_extern_verbatim(cx: &mut Errors, tokens: &TokenStream, lang: Lang) -> R
             Err(Error::new_spanned(span, msg))
         }
     }
+}
+
+fn parse_impl(imp: ItemImpl) -> Result<Api> {
+    if !imp.items.is_empty() {
+        let mut span = Group::new(Delimiter::Brace, TokenStream::new());
+        span.set_span(imp.brace_token.span);
+        return Err(Error::new_spanned(span, "expected an empty impl block"));
+    }
+
+    let self_ty = &imp.self_ty;
+    if let Some((bang, path, for_token)) = &imp.trait_ {
+        let span = quote!(#bang #path #for_token #self_ty);
+        return Err(Error::new_spanned(
+            span,
+            "unexpected impl, expected something like `impl UniquePtr<T> {}`",
+        ));
+    }
+
+    let generics = &imp.generics;
+    if !generics.params.is_empty() || generics.where_clause.is_some() {
+        return Err(Error::new_spanned(
+            imp,
+            "generic parameters on an impl is not supported",
+        ));
+    }
+
+    Ok(Api::Impl(Impl {
+        impl_token: imp.impl_token,
+        ty: parse_type(&self_ty)?,
+        brace_token: imp.brace_token,
+    }))
 }
 
 fn parse_include(input: ParseStream) -> Result<String> {

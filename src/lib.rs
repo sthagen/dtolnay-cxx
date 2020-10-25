@@ -18,7 +18,7 @@
 //!
 //! <br>
 //!
-//! *Compiler support: requires rustc 1.42+ and c++11 or newer*<br>
+//! *Compiler support: requires rustc 1.43+ and c++11 or newer*<br>
 //! *[Release notes](https://github.com/dtolnay/cxx/releases)*
 //!
 //! <br>
@@ -228,7 +228,7 @@
 //! # Cargo.toml
 //!
 //! [build-dependencies]
-//! cxx-build = "0.4"
+//! cxx-build = "0.5"
 //! ```
 //!
 //! ```no_run
@@ -253,7 +253,7 @@
 //! For use in non-Cargo builds like Bazel or Buck, CXX provides an alternate
 //! way of invoking the C++ code generator as a standalone command line tool.
 //! The tool is packaged as the `cxxbridge-cmd` crate on crates.io or can be
-//! built from the *cmd* directory of [https://github.com/dtolnay/cxx].
+//! built from the *gen/cmd* directory of [https://github.com/dtolnay/cxx].
 //!
 //! ```bash
 //! $ cargo install cxxbridge-cmd
@@ -348,7 +348,8 @@
 //!
 //! [https://github.com/dtolnay/cxx]: https://github.com/dtolnay/cxx
 
-#![doc(html_root_url = "https://docs.rs/cxx/0.4.4")]
+#![no_std]
+#![doc(html_root_url = "https://docs.rs/cxx/0.5.2")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -369,6 +370,9 @@
 
 #[cfg(built_with_cargo)]
 extern crate link_cplusplus;
+
+extern crate alloc;
+extern crate std;
 
 #[macro_use]
 mod macros;
@@ -391,7 +395,7 @@ mod unwind;
 pub use crate::cxx_string::CxxString;
 pub use crate::cxx_vector::CxxVector;
 pub use crate::exception::Exception;
-pub use crate::extern_type::ExternType;
+pub use crate::extern_type::{kind, ExternType};
 pub use crate::unique_ptr::UniquePtr;
 pub use cxxbridge_macro::bridge;
 
@@ -418,7 +422,7 @@ pub type Vector<T> = CxxVector<T>;
 #[doc(hidden)]
 pub mod private {
     pub use crate::cxx_vector::VectorElement;
-    pub use crate::extern_type::verify_extern_type;
+    pub use crate::extern_type::{verify_extern_kind, verify_extern_type};
     pub use crate::function::FatFunction;
     pub use crate::opaque::Opaque;
     pub use crate::result::{r#try, Result};

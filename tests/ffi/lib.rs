@@ -4,10 +4,37 @@
     clippy::trivially_copy_pass_by_ref
 )]
 
+pub mod extra;
 pub mod module;
 
-use cxx::{CxxString, UniquePtr};
+use cxx::{CxxString, CxxVector, UniquePtr};
 use std::fmt::{self, Display};
+
+mod other {
+    use cxx::kind::{Opaque, Trivial};
+    use cxx::{type_id, CxxString, ExternType};
+
+    #[repr(C)]
+    pub struct D {
+        pub d: u64,
+    }
+
+    #[repr(C)]
+    pub struct E {
+        e: u64,
+        e_str: CxxString,
+    }
+
+    unsafe impl ExternType for D {
+        type Id = type_id!("tests::D");
+        type Kind = Trivial;
+    }
+
+    unsafe impl ExternType for E {
+        type Id = type_id!("tests::E");
+        type Kind = Opaque;
+    }
+}
 
 #[cxx::bridge(namespace = tests)]
 pub mod ffi {
@@ -23,7 +50,7 @@ pub mod ffi {
     }
 
     extern "C" {
-        include!("cxx-test-suite/tests.h");
+        include!("tests/ffi/tests.h");
 
         type C;
 
@@ -101,6 +128,15 @@ pub mod ffi {
         fn set2(&mut self, n: usize) -> usize;
         fn set_succeed(&mut self, n: usize) -> Result<usize>;
         fn get_fail(&mut self) -> Result<usize>;
+
+        #[rust_name = "i32_overloaded_method"]
+        fn cOverloadedMethod(&self, x: i32) -> String;
+        #[rust_name = "str_overloaded_method"]
+        fn cOverloadedMethod(&self, x: &str) -> String;
+        #[rust_name = "i32_overloaded_function"]
+        fn cOverloadedFunction(x: i32) -> String;
+        #[rust_name = "str_overloaded_function"]
+        fn cOverloadedFunction(x: &str) -> String;
     }
 
     extern "C" {
@@ -144,6 +180,8 @@ pub mod ffi {
         fn r_take_sliceu8(s: &[u8]);
         fn r_take_rust_string(s: String);
         fn r_take_unique_ptr_string(s: UniquePtr<CxxString>);
+        fn r_take_ref_vector(v: &CxxVector<u8>);
+        fn r_take_ref_empty_vector(v: &CxxVector<u64>);
         fn r_take_rust_vec(v: Vec<u8>);
         fn r_take_rust_vec_string(v: Vec<String>);
         fn r_take_ref_rust_vec(v: &Vec<u8>);
@@ -152,11 +190,15 @@ pub mod ffi {
 
         fn r_try_return_void() -> Result<()>;
         fn r_try_return_primitive() -> Result<usize>;
+        fn r_try_return_box() -> Result<Box<R>>;
         fn r_fail_return_primitive() -> Result<usize>;
 
         fn r_return_r2(n: usize) -> Box<R2>;
         fn get(self: &R2) -> usize;
         fn set(self: &mut R2, n: usize) -> usize;
+
+        #[cxx_name = "rAliasedFunction"]
+        fn r_aliased_function(x: i32) -> String;
     }
 }
 
@@ -306,6 +348,16 @@ fn r_take_unique_ptr_string(s: UniquePtr<CxxString>) {
     assert_eq!(s.as_ref().unwrap().to_str().unwrap(), "2020");
 }
 
+fn r_take_ref_vector(v: &CxxVector<u8>) {
+    let slice = v.as_slice();
+    assert_eq!(slice, [20, 2, 0]);
+}
+
+fn r_take_ref_empty_vector(v: &CxxVector<u64>) {
+    assert!(v.as_slice().is_empty());
+    assert!(v.is_empty());
+}
+
 fn r_take_rust_vec(v: Vec<u8>) {
     let _ = v;
 }
@@ -334,10 +386,18 @@ fn r_try_return_primitive() -> Result<usize, Error> {
     Ok(2020)
 }
 
+fn r_try_return_box() -> Result<Box<R>, Error> {
+    Ok(Box::new(2020))
+}
+
 fn r_fail_return_primitive() -> Result<usize, Error> {
     Err(Error)
 }
 
 fn r_return_r2(n: usize) -> Box<R2> {
     Box::new(R2(n))
+}
+
+fn r_aliased_function(x: i32) -> String {
+    x.to_string()
 }

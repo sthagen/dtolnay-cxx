@@ -1,11 +1,12 @@
 [package]
 name = "cxx-gen"
-version = "0.0.1"
+version = "0.5.2"
 authors = ["Adrian Taylor <adetaylor@chromium.org>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "C++ code generator for integrating `cxx` crate into higher level tools."
 repository = "https://github.com/dtolnay/cxx"
+exclude = ["build.rs"]
 keywords = ["ffi"]
 categories = ["development-tools::ffi"]
 

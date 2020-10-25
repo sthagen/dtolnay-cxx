@@ -1,11 +1,12 @@
 [package]
 name = "cxxbridge-cmd"
-version = "0.4.4"
+version = "0.5.2"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "C++ code generator for integrating `cxx` crate into a non-Cargo build."
 repository = "https://github.com/dtolnay/cxx"
+exclude = ["build.rs"]
 keywords = ["ffi"]
 categories = ["development-tools::ffi"]
 
