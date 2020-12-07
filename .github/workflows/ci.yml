@@ -16,7 +16,7 @@ jobs:
           - rust: nightly
           - rust: beta
           - rust: stable
-          - rust: 1.43.0
+          - rust: 1.48.0
           - name: macOS
             rust: nightly
             os: macos
@@ -35,13 +35,15 @@ jobs:
         with:
           toolchain: ${{matrix.rust}}
       - name: Determine test suite subset
-        # Our Windows jobs are the longest running, so exclude the relatively
-        # slow compiletest from them to speed up end-to-end CI time, except
-        # during cron builds when no human is presumably waiting on the build.
-        # The extra coverage is not particularly valuable and we can still
-        # ensure the test is kept passing on the basis of the scheduled builds.
-        if: matrix.os == 'windows' && github.event_name != 'schedule'
-        run: echo '::set-env name=RUSTFLAGS::--cfg skip_ui_tests'
+        # Our Windows and macOS jobs are the longest running, so exclude the
+        # relatively slow compiletest from them to speed up end-to-end CI time,
+        # except during cron builds when no human is presumably waiting on the
+        # build. The extra coverage is not particularly valuable and we can
+        # still ensure the test is kept passing on the basis of the scheduled
+        # builds.
+        if: matrix.os && github.event_name != 'schedule'
+        run: echo 'RUSTFLAGS=--cfg skip_ui_tests' >> $GITHUB_ENV
+        shell: bash
       - run: cargo run --manifest-path demo/Cargo.toml
       - run: cargo test --workspace --exclude cxx-test-suite
 
@@ -62,7 +64,7 @@ jobs:
           chmod +x bin/buck
           echo bin >> $GITHUB_PATH
       - name: Install lld
-        run: sudo apt install lld
+        run: sudo apt-get install lld
       - name: Vendor dependencies
         run: |
           cp third-party/Cargo.lock .
@@ -91,4 +93,14 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@clippy
-      - run: cargo clippy --workspace -- -Dclippy::all
+      - run: cargo clippy --workspace --tests -- -Dclippy::all
+
+  clang-tidy:
+    name: Clang Tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install clang-tidy
+        run: sudo apt-get install clang-tidy-10
+      - name: Run clang-tidy
+        run: clang-tidy-10 src/cxx.cc --warnings-as-errors=*

@@ -7,6 +7,7 @@ use core::fmt::{self, Debug, Display};
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Deref, DerefMut};
+use core::pin::Pin;
 use core::ptr;
 
 /// Binding to C++ `std::unique_ptr<T, std::default_delete<T>>`.
@@ -58,10 +59,26 @@ where
         unsafe { T::__get(self.repr).as_ref() }
     }
 
-    /// Returns a mutable reference to the object owned by this UniquePtr if
-    /// any, otherwise None.
-    pub fn as_mut(&mut self) -> Option<&mut T> {
-        unsafe { (T::__get(self.repr) as *mut T).as_mut() }
+    /// Returns a mutable pinned reference to the object owned by this UniquePtr
+    /// if any, otherwise None.
+    pub fn as_mut(&mut self) -> Option<Pin<&mut T>> {
+        unsafe {
+            let mut_reference = (T::__get(self.repr) as *mut T).as_mut()?;
+            Some(Pin::new_unchecked(mut_reference))
+        }
+    }
+
+    /// Returns a mutable pinned reference to the object owned by this
+    /// UniquePtr.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the UniquePtr holds a null pointer.
+    pub fn pin_mut(&mut self) -> Pin<&mut T> {
+        match self.as_mut() {
+            Some(target) => target,
+            None => panic!("called pin_mut on a null UniquePtr<{}>", T::__NAME),
+        }
     }
 
     /// Consumes the UniquePtr, releasing its ownership of the heap-allocated T.
@@ -117,11 +134,11 @@ where
 
 impl<T> DerefMut for UniquePtr<T>
 where
-    T: UniquePtrTarget,
+    T: UniquePtrTarget + Unpin,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self.as_mut() {
-            Some(target) => target,
+            Some(target) => Pin::into_inner(target),
             None => panic!("called deref_mut on a null UniquePtr<{}>", T::__NAME),
         }
     }
@@ -179,15 +196,15 @@ pub unsafe trait UniquePtrTarget {
 }
 
 extern "C" {
-    #[link_name = "cxxbridge05$unique_ptr$std$string$null"]
+    #[link_name = "cxxbridge1$unique_ptr$std$string$null"]
     fn unique_ptr_std_string_null(this: *mut *mut c_void);
-    #[link_name = "cxxbridge05$unique_ptr$std$string$raw"]
+    #[link_name = "cxxbridge1$unique_ptr$std$string$raw"]
     fn unique_ptr_std_string_raw(this: *mut *mut c_void, raw: *mut CxxString);
-    #[link_name = "cxxbridge05$unique_ptr$std$string$get"]
+    #[link_name = "cxxbridge1$unique_ptr$std$string$get"]
     fn unique_ptr_std_string_get(this: *const *mut c_void) -> *const CxxString;
-    #[link_name = "cxxbridge05$unique_ptr$std$string$release"]
+    #[link_name = "cxxbridge1$unique_ptr$std$string$release"]
     fn unique_ptr_std_string_release(this: *mut *mut c_void) -> *mut CxxString;
-    #[link_name = "cxxbridge05$unique_ptr$std$string$drop"]
+    #[link_name = "cxxbridge1$unique_ptr$std$string$drop"]
     fn unique_ptr_std_string_drop(this: *mut *mut c_void);
 }
 

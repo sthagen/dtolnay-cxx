@@ -1,61 +1,34 @@
-use crate::gen::out::OutFile;
-use std::fmt::{self, Display};
+use crate::gen::out::{Content, OutFile};
+use crate::syntax::{self, IncludeKind};
+use std::ops::{Deref, DerefMut};
 
 /// The complete contents of the "rust/cxx.h" header.
 pub static HEADER: &str = include_str!("include/cxx.h");
 
-pub(super) fn write(out: &mut OutFile, needed: bool, guard: &str) {
-    let ifndef = format!("#ifndef {}", guard);
-    let define = format!("#define {}", guard);
-    let endif = format!("#endif // {}", guard);
-
-    let mut offset = 0;
-    loop {
-        let begin = find_line(offset, &ifndef);
-        let end = find_line(offset, &endif);
-        if let (Some(begin), Some(end)) = (begin, end) {
-            if !needed {
-                return;
-            }
-            out.next_section();
-            if offset == 0 {
-                writeln!(out, "{}", ifndef);
-                writeln!(out, "{}", define);
-            }
-            for line in HEADER[begin + ifndef.len()..end].trim().lines() {
-                if line != define && !line.trim_start().starts_with("//") {
-                    writeln!(out, "{}", line);
-                }
-            }
-            offset = end + endif.len();
-        } else if offset == 0 {
-            panic!("not found in cxx.h header: {}", guard)
-        } else {
-            writeln!(out, "{}", endif);
-            return;
-        }
-    }
-}
-
-fn find_line(mut offset: usize, line: &str) -> Option<usize> {
-    loop {
-        offset += HEADER[offset..].find(line)?;
-        let rest = &HEADER[offset + line.len()..];
-        if rest.starts_with('\n') || rest.starts_with('\r') {
-            return Some(offset);
-        }
-        offset += line.len();
-    }
+/// A header to #include.
+///
+/// The cxxbridge tool does not parse or even require the given paths to exist;
+/// they simply go into the generated C++ code as #include lines.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Include {
+    /// The header's path, not including the enclosing quotation marks or angle
+    /// brackets.
+    pub path: String,
+    /// Whether to emit `#include "path"` or `#include <path>`.
+    pub kind: IncludeKind,
 }
 
 #[derive(Default, PartialEq)]
-pub struct Includes {
-    custom: Vec<String>,
+pub struct Includes<'a> {
+    pub custom: Vec<Include>,
+    pub algorithm: bool,
     pub array: bool,
     pub cstddef: bool,
     pub cstdint: bool,
     pub cstring: bool,
     pub exception: bool,
+    pub initializer_list: bool,
+    pub iterator: bool,
     pub memory: bool,
     pub new: bool,
     pub string: bool,
@@ -63,71 +36,133 @@ pub struct Includes {
     pub utility: bool,
     pub vector: bool,
     pub basetsd: bool,
+    pub content: Content<'a>,
 }
 
-impl Includes {
+impl<'a> Includes<'a> {
     pub fn new() -> Self {
         Includes::default()
     }
 
-    pub fn insert(&mut self, include: impl AsRef<str>) {
-        self.custom.push(include.as_ref().to_owned());
+    pub fn insert(&mut self, include: impl Into<Include>) {
+        self.custom.push(include.into());
     }
 }
 
-impl Extend<String> for Includes {
-    fn extend<I: IntoIterator<Item = String>>(&mut self, iter: I) {
-        self.custom.extend(iter);
-    }
-}
+pub(super) fn write(out: &mut OutFile) {
+    let header = out.header;
+    let include = &mut out.include;
+    let out = &mut include.content;
 
-impl Display for Includes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for include in &self.custom {
-            if include.starts_with('<') && include.ends_with('>') {
-                writeln!(f, "#include {}", include)?;
-            } else {
-                writeln!(f, "#include \"{}\"", include.escape_default())?;
+    if header {
+        writeln!(out, "#pragma once");
+    }
+
+    for include in &include.custom {
+        match include.kind {
+            IncludeKind::Quoted => {
+                writeln!(out, "#include \"{}\"", include.path.escape_default());
+            }
+            IncludeKind::Bracketed => {
+                writeln!(out, "#include <{}>", include.path);
             }
         }
-        if self.array {
-            writeln!(f, "#include <array>")?;
+    }
+
+    let Includes {
+        custom: _,
+        algorithm,
+        array,
+        cstddef,
+        cstdint,
+        cstring,
+        exception,
+        initializer_list,
+        iterator,
+        memory,
+        new,
+        string,
+        type_traits,
+        utility,
+        vector,
+        basetsd,
+        content: _,
+    } = *include;
+
+    if algorithm {
+        writeln!(out, "#include <algorithm>");
+    }
+    if array {
+        writeln!(out, "#include <array>");
+    }
+    if cstddef {
+        writeln!(out, "#include <cstddef>");
+    }
+    if cstdint {
+        writeln!(out, "#include <cstdint>");
+    }
+    if cstring {
+        writeln!(out, "#include <cstring>");
+    }
+    if exception {
+        writeln!(out, "#include <exception>");
+    }
+    if initializer_list {
+        writeln!(out, "#include <initializer_list>");
+    }
+    if iterator {
+        writeln!(out, "#include <iterator>");
+    }
+    if memory {
+        writeln!(out, "#include <memory>");
+    }
+    if new {
+        writeln!(out, "#include <new>");
+    }
+    if string {
+        writeln!(out, "#include <string>");
+    }
+    if type_traits {
+        writeln!(out, "#include <type_traits>");
+    }
+    if utility {
+        writeln!(out, "#include <utility>");
+    }
+    if vector {
+        writeln!(out, "#include <vector>");
+    }
+    if basetsd {
+        writeln!(out, "#if defined(_WIN32)");
+        writeln!(out, "#include <basetsd.h>");
+        writeln!(out, "#endif");
+    }
+}
+
+impl<'i, 'a> Extend<&'i Include> for Includes<'a> {
+    fn extend<I: IntoIterator<Item = &'i Include>>(&mut self, iter: I) {
+        self.custom.extend(iter.into_iter().cloned());
+    }
+}
+
+impl<'i> From<&'i syntax::Include> for Include {
+    fn from(include: &syntax::Include) -> Self {
+        Include {
+            path: include.path.clone(),
+            kind: include.kind,
         }
-        if self.cstddef {
-            writeln!(f, "#include <cstddef>")?;
-        }
-        if self.cstdint {
-            writeln!(f, "#include <cstdint>")?;
-        }
-        if self.cstring {
-            writeln!(f, "#include <cstring>")?;
-        }
-        if self.exception {
-            writeln!(f, "#include <exception>")?;
-        }
-        if self.memory {
-            writeln!(f, "#include <memory>")?;
-        }
-        if self.new {
-            writeln!(f, "#include <new>")?;
-        }
-        if self.string {
-            writeln!(f, "#include <string>")?;
-        }
-        if self.type_traits {
-            writeln!(f, "#include <type_traits>")?;
-        }
-        if self.utility {
-            writeln!(f, "#include <utility>")?;
-        }
-        if self.vector {
-            writeln!(f, "#include <vector>")?;
-        }
-        if self.basetsd {
-            writeln!(f, "#if defined(_WIN32)")?;
-            writeln!(f, "#include <basetsd.h>")?;
-            writeln!(f, "#endif")?;
-        }
-        Ok(())
+    }
+}
+
+impl<'a> Deref for Includes<'a> {
+    type Target = Content<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.content
+    }
+}
+
+impl<'a> DerefMut for Includes<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.content
     }
 }

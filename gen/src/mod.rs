@@ -1,18 +1,25 @@
 // Functionality that is shared between the cxx_build::bridge entry point and
 // the cxxbridge CLI command.
 
+mod block;
+mod builtin;
+mod check;
 pub(super) mod error;
 mod file;
 pub(super) mod fs;
+mod ifndef;
 pub(super) mod include;
+mod namespace;
+mod nested;
 pub(super) mod out;
 mod write;
 
 pub(super) use self::error::Error;
 use self::error::{format_err, Result};
 use self::file::File;
+use self::include::Include;
 use crate::syntax::report::Errors;
-use crate::syntax::{self, check, Types};
+use crate::syntax::{self, Types};
 use std::path::Path;
 
 /// Options for C++ code generation.
@@ -34,7 +41,7 @@ pub struct Opt {
     /// Any additional headers to #include. The cxxbridge tool does not parse or
     /// even require the given paths to exist; they simply go into the generated
     /// C++ code as #include lines.
-    pub include: Vec<String>,
+    pub include: Vec<Include>,
     /// Optional annotation for implementations of C++ function wrappers that
     /// may be exposed to Rust. You may for example need to provide
     /// `__declspec(dllexport)` or `__attribute__((visibility("default")))` if
@@ -44,6 +51,7 @@ pub struct Opt {
 
     pub(super) gen_header: bool,
     pub(super) gen_implementation: bool,
+    pub(super) allow_dot_includes: bool,
 }
 
 /// Results of code generation.
@@ -62,6 +70,7 @@ impl Default for Opt {
             cxx_impl_annotations: None,
             gen_header: true,
             gen_implementation: true,
+            allow_dot_includes: true,
         }
     }
 }
@@ -95,38 +104,47 @@ fn generate_from_string(source: &str, opt: &Opt) -> Result<GeneratedCode> {
         let shebang_end = source.find('\n').unwrap_or(source.len());
         source = &source[shebang_end..];
     }
+    proc_macro2::fallback::force();
     let syntax: File = syn::parse_str(source)?;
     generate(syntax, opt)
 }
 
 pub(super) fn generate(syntax: File, opt: &Opt) -> Result<GeneratedCode> {
-    proc_macro2::fallback::force();
+    if syntax.modules.is_empty() {
+        return Err(Error::NoBridgeMod);
+    }
+
+    let ref mut apis = Vec::new();
     let ref mut errors = Errors::new();
-    let bridge = syntax
-        .modules
-        .into_iter()
-        .next()
-        .ok_or(Error::NoBridgeMod)?;
-    let ref namespace = bridge.namespace;
-    let trusted = bridge.unsafety.is_some();
-    let ref apis = syntax::parse_items(errors, bridge.content, trusted);
+    for bridge in syntax.modules {
+        let ref namespace = bridge.namespace;
+        let trusted = bridge.unsafety.is_some();
+        apis.extend(syntax::parse_items(
+            errors,
+            bridge.content,
+            trusted,
+            namespace,
+        ));
+    }
+
     let ref types = Types::collect(errors, apis);
+    check::precheck(errors, apis, opt);
     errors.propagate()?;
-    check::typecheck(errors, namespace, apis, types);
+    check::typecheck(errors, apis, types);
     errors.propagate()?;
-    // Some callers may wish to generate both header and C++
-    // from the same token stream to avoid parsing twice. But others
-    // only need to generate one or the other.
+
+    // Some callers may wish to generate both header and implementation from the
+    // same token stream to avoid parsing twice. Others only need to generate
+    // one or the other.
+    let (mut header, mut implementation) = Default::default();
+    if opt.gen_header {
+        header = write::gen(apis, types, opt, true);
+    }
+    if opt.gen_implementation {
+        implementation = write::gen(apis, types, opt, false);
+    }
     Ok(GeneratedCode {
-        header: if opt.gen_header {
-            write::gen(namespace, apis, types, opt, true).content()
-        } else {
-            Vec::new()
-        },
-        implementation: if opt.gen_implementation {
-            write::gen(namespace, apis, types, opt, false).content()
-        } else {
-            Vec::new()
-        },
+        header,
+        implementation,
     })
 }

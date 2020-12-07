@@ -9,7 +9,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub(crate) struct Error {
-    source: io::Error,
+    source: Option<io::Error>,
     message: String,
 }
 
@@ -21,14 +21,15 @@ impl Display for Error {
 
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        Some(&self.source)
+        let source = self.source.as_ref()?;
+        Some(source)
     }
 }
 
 macro_rules! err {
     ($io_error:expr, $fmt:expr $(, $path:expr)* $(,)?) => {
         Err(Error {
-            source: $io_error,
+            source: Option::from($io_error),
             message: format!($fmt $(, $path.display())*),
         })
     }
@@ -91,44 +92,57 @@ pub(crate) fn remove_dir(path: impl AsRef<Path>) -> Result<()> {
 }
 
 fn symlink<'a>(
-    src: &'a Path,
-    dst: &'a Path,
+    original: &'a Path,
+    link: &'a Path,
     fun: fn(&'a Path, &'a Path) -> io::Result<()>,
 ) -> Result<()> {
-    match fun(src, dst) {
+    match fun(original, link) {
         Ok(()) => Ok(()),
         Err(e) => err!(
             e,
             "Failed to create symlink `{}` pointing to `{}`",
-            dst,
-            src,
+            link,
+            original,
         ),
     }
+}
+
+pub(crate) fn symlink_fail(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
+    err!(
+        None,
+        "Failed to create symlink `{}` pointing to `{}`",
+        link.as_ref(),
+        original.as_ref(),
+    )
 }
 
 #[cfg(unix)]
 #[allow(unused_imports)]
 pub(crate) use self::symlink_file as symlink_dir;
 
+#[cfg(not(any(unix, windows)))]
+#[allow(unused_imports)]
+pub(crate) use self::symlink_fail as symlink_dir;
+
 #[cfg(unix)]
-pub(crate) fn symlink_file(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
-    symlink(src.as_ref(), dst.as_ref(), std::os::unix::fs::symlink)
+pub(crate) fn symlink_file(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
+    symlink(original.as_ref(), link.as_ref(), std::os::unix::fs::symlink)
 }
 
 #[cfg(windows)]
-pub(crate) fn symlink_file(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
+pub(crate) fn symlink_file(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
     symlink(
-        src.as_ref(),
-        dst.as_ref(),
+        original.as_ref(),
+        link.as_ref(),
         std::os::windows::fs::symlink_file,
     )
 }
 
 #[cfg(windows)]
-pub(crate) fn symlink_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
+pub(crate) fn symlink_dir(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
     symlink(
-        src.as_ref(),
-        dst.as_ref(),
+        original.as_ref(),
+        link.as_ref(),
         std::os::windows::fs::symlink_dir,
     )
 }

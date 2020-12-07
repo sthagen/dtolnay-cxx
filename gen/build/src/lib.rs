@@ -50,25 +50,32 @@
     clippy::inherent_to_string,
     clippy::needless_doctest_main,
     clippy::new_without_default,
+    clippy::nonminimal_bool,
     clippy::or_fun_call,
+    clippy::too_many_arguments,
     clippy::toplevel_ref_arg
 )]
 
 mod cfg;
+mod deps;
 mod error;
 mod gen;
+mod intern;
 mod out;
 mod paths;
 mod syntax;
 mod target;
+mod vec;
 
+use crate::deps::{Crate, HeaderDir};
 use crate::error::{Error, Result};
 use crate::gen::error::report;
 use crate::gen::Opt;
 use crate::paths::PathExt;
 use crate::target::TargetDir;
 use cc::Build;
-use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Write};
@@ -110,6 +117,8 @@ pub fn bridges(rust_source_files: impl IntoIterator<Item = impl AsRef<Path>>) ->
 struct Project {
     include_prefix: PathBuf,
     manifest_dir: PathBuf,
+    // The `links = "..."` value from Cargo.toml.
+    links_attribute: Option<OsString>,
     // Output directory as received from Cargo.
     out_dir: PathBuf,
     // Directory into which to symlink all generated code.
@@ -133,6 +142,8 @@ impl Project {
         assert!(include_prefix.is_relative());
         let include_prefix = include_prefix.components().collect();
 
+        let links_attribute = env::var_os("CARGO_MANIFEST_LINKS");
+
         let manifest_dir = paths::manifest_dir()?;
         let out_dir = paths::out_dir()?;
 
@@ -144,6 +155,7 @@ impl Project {
         Ok(Project {
             include_prefix,
             manifest_dir,
+            links_attribute,
             out_dir,
             shared_dir,
         })
@@ -174,9 +186,9 @@ impl Project {
 // on the current crate.
 fn build(rust_source_files: &mut dyn Iterator<Item = impl AsRef<Path>>) -> Result<Build> {
     let ref prj = Project::init()?;
-
-    let ref crate_dir = make_crate_dir(prj);
-    let ref include_dir = make_include_dir(prj)?;
+    validate_cfg(prj)?;
+    let this_crate = make_this_crate(prj)?;
+    this_crate.print_to_cargo();
 
     let mut build = Build::new();
     build.cpp(true);
@@ -187,91 +199,180 @@ fn build(rust_source_files: &mut dyn Iterator<Item = impl AsRef<Path>>) -> Resul
     }
 
     eprintln!("\nCXX include path:");
-    build.include(include_dir);
-    eprintln!("  {}", include_dir.display());
-    if let Some(crate_dir) = crate_dir {
-        // Placed after the generated code directory (include_dir) on the
-        // include line so that `#include "path/to/file.rs"` from C++
-        // "magically" works and refers to the API generated from that Rust
-        // source file.
-        build.include(crate_dir);
-        eprintln!("  {}", crate_dir.display());
+    for header_dir in this_crate.header_dirs {
+        build.include(&header_dir.path);
+        if header_dir.exported {
+            eprintln!("  {}", header_dir.path.display());
+        } else {
+            eprintln!("  {} (private)", header_dir.path.display());
+        }
     }
-    for dep in env_include_dirs() {
-        build.include(&dep);
-        eprintln!("  {}", dep.display());
-    }
+
     Ok(build)
 }
 
-fn env_include_dirs() -> impl Iterator<Item = PathBuf> {
-    let mut env_include_dirs = BTreeMap::new();
-    for (k, v) in env::vars_os() {
-        let mut k = k.to_string_lossy().into_owned();
-        // Only variables set from a build script of direct dependencies are
-        // observable. That's exactly what we want! Your crate needs to declare
-        // a direct dependency on the other crate in order to be able to
-        // #include its headers.
-        //
-        // Also, they're only observable if the dependency's manifest contains a
-        // `links` key. This is important because Cargo imposes no ordering on
-        // the execution of build scripts without a `links` key. When exposing a
-        // generated header for the current crate to #include, we need to be
-        // sure the dependency's build script has already executed and emitted
-        // that generated header.
-        //
-        // References:
-        //   - https://doc.rust-lang.org/cargo/reference/build-scripts.html#the-links-manifest-key
-        //   - https://doc.rust-lang.org/cargo/reference/build-script-examples.html#using-another-sys-crate
-        if k.starts_with("DEP_") {
-            if k.ends_with("_CXXBRIDGE_INCLUDE") {
-                // Tweak to ensure sorted before the other one, for the same
-                // reason as the comment on ordering of include_dir vs crate_dir
-                // above.
-                k.replace_range(k.len() - "INCLUDE".len().., "0");
-                env_include_dirs.insert(k, PathBuf::from(v));
-            } else if k.ends_with("_CXXBRIDGE_CRATE") {
-                k.replace_range(k.len() - "CRATE".len().., "1");
-                env_include_dirs.insert(k, PathBuf::from(v));
+fn validate_cfg(prj: &Project) -> Result<()> {
+    for exported_dir in &CFG.exported_header_dirs {
+        if !exported_dir.is_absolute() {
+            return Err(Error::ExportedDirNotAbsolute(exported_dir));
+        }
+    }
+
+    for prefix in &CFG.exported_header_prefixes {
+        if prefix.is_empty() {
+            return Err(Error::ExportedEmptyPrefix);
+        }
+    }
+
+    if prj.links_attribute.is_none() {
+        if !CFG.exported_header_dirs.is_empty() {
+            return Err(Error::ExportedDirsWithoutLinks);
+        }
+        if !CFG.exported_header_prefixes.is_empty() {
+            return Err(Error::ExportedPrefixesWithoutLinks);
+        }
+        if !CFG.exported_header_links.is_empty() {
+            return Err(Error::ExportedLinksWithoutLinks);
+        }
+    }
+
+    Ok(())
+}
+
+fn make_this_crate(prj: &Project) -> Result<Crate> {
+    let crate_dir = make_crate_dir(prj);
+    let include_dir = make_include_dir(prj)?;
+
+    let mut this_crate = Crate {
+        include_prefix: Some(prj.include_prefix.clone()),
+        links: prj.links_attribute.clone(),
+        header_dirs: Vec::new(),
+    };
+
+    // The generated code directory (include_dir) is placed in front of
+    // crate_dir on the include line so that `#include "path/to/file.rs"` from
+    // C++ "magically" works and refers to the API generated from that Rust
+    // source file.
+    this_crate.header_dirs.push(HeaderDir {
+        exported: true,
+        path: include_dir,
+    });
+
+    this_crate.header_dirs.push(HeaderDir {
+        exported: true,
+        path: crate_dir,
+    });
+
+    for exported_dir in &CFG.exported_header_dirs {
+        this_crate.header_dirs.push(HeaderDir {
+            exported: true,
+            path: PathBuf::from(exported_dir),
+        });
+    }
+
+    let mut header_dirs_index = BTreeMap::new();
+    let mut used_header_links = BTreeSet::new();
+    let mut used_header_prefixes = BTreeSet::new();
+    for krate in deps::direct_dependencies() {
+        let mut is_link_exported = || match &krate.links {
+            None => false,
+            Some(links_attribute) => CFG.exported_header_links.iter().any(|&exported| {
+                let matches = links_attribute == exported;
+                if matches {
+                    used_header_links.insert(exported);
+                }
+                matches
+            }),
+        };
+
+        let mut is_prefix_exported = || match &krate.include_prefix {
+            None => false,
+            Some(include_prefix) => CFG.exported_header_prefixes.iter().any(|&exported| {
+                let matches = include_prefix.starts_with(exported);
+                if matches {
+                    used_header_prefixes.insert(exported);
+                }
+                matches
+            }),
+        };
+
+        let exported = is_link_exported() || is_prefix_exported();
+
+        for dir in krate.header_dirs {
+            // Deduplicate dirs reachable via multiple transitive dependencies.
+            match header_dirs_index.entry(dir.path.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(this_crate.header_dirs.len());
+                    this_crate.header_dirs.push(HeaderDir {
+                        exported,
+                        path: dir.path,
+                    });
+                }
+                Entry::Occupied(entry) => {
+                    let index = *entry.get();
+                    this_crate.header_dirs[index].exported |= exported;
+                }
             }
         }
     }
-    env_include_dirs.into_iter().map(|entry| entry.1)
+
+    if let Some(unused) = CFG
+        .exported_header_links
+        .iter()
+        .find(|&exported| !used_header_links.contains(exported))
+    {
+        return Err(Error::UnusedExportedLinks(unused));
+    }
+
+    if let Some(unused) = CFG
+        .exported_header_prefixes
+        .iter()
+        .find(|&exported| !used_header_prefixes.contains(exported))
+    {
+        return Err(Error::UnusedExportedPrefix(unused));
+    }
+
+    Ok(this_crate)
 }
 
-fn make_crate_dir(prj: &Project) -> Option<PathBuf> {
+fn make_crate_dir(prj: &Project) -> PathBuf {
     if prj.include_prefix.as_os_str().is_empty() {
-        let crate_dir = prj.manifest_dir.clone();
-        println!("cargo:CXXBRIDGE_CRATE={}", crate_dir.to_string_lossy());
-        return Some(crate_dir);
+        return prj.manifest_dir.clone();
     }
     let crate_dir = prj.out_dir.join("cxxbridge").join("crate");
-    let link = crate_dir.join(&prj.include_prefix);
-    if out::symlink_dir(&prj.manifest_dir, link).is_ok() {
-        println!("cargo:CXXBRIDGE_CRATE={}", crate_dir.to_string_lossy());
-        Some(crate_dir)
-    } else {
-        None
+    let ref link = crate_dir.join(&prj.include_prefix);
+    let ref manifest_dir = prj.manifest_dir;
+    if out::symlink_dir(manifest_dir, link).is_err() && cfg!(not(unix)) {
+        let cachedir_tag = "\
+        Signature: 8a477f597d28d172789f06886806bc55\n\
+        # This file is a cache directory tag created by cxx.\n\
+        # For information about cache directory tags see https://bford.info/cachedir/\n";
+        let _ = out::write(crate_dir.join("CACHEDIR.TAG"), cachedir_tag.as_bytes());
+        let max_depth = 6;
+        best_effort_copy_headers(manifest_dir, link, max_depth);
     }
+    crate_dir
 }
 
 fn make_include_dir(prj: &Project) -> Result<PathBuf> {
     let include_dir = prj.out_dir.join("cxxbridge").join("include");
     let cxx_h = include_dir.join("rust").join("cxx.h");
     let ref shared_cxx_h = prj.shared_dir.join("rust").join("cxx.h");
-    if let Some(ref original) = env::var_os("DEP_CXXBRIDGE05_HEADER") {
+    if let Some(ref original) = env::var_os("DEP_CXXBRIDGE1_HEADER") {
         out::symlink_file(original, cxx_h)?;
         out::symlink_file(original, shared_cxx_h)?;
     } else {
         out::write(shared_cxx_h, gen::include::HEADER.as_bytes())?;
         out::symlink_file(shared_cxx_h, cxx_h)?;
     }
-    println!("cargo:CXXBRIDGE_INCLUDE={}", include_dir.to_string_lossy());
     Ok(include_dir)
 }
 
 fn generate_bridge(prj: &Project, build: &mut Build, rust_source_file: &Path) -> Result<()> {
-    let opt = Opt::default();
+    let opt = Opt {
+        allow_dot_includes: false,
+        ..Opt::default()
+    };
     let generated = gen::generate_from_path(rust_source_file, &opt);
     let ref rel_path = paths::local_relative_path(rust_source_file);
 
@@ -296,6 +397,48 @@ fn generate_bridge(prj: &Project, build: &mut Build, rust_source_file: &Path) ->
     let _ = out::symlink_file(header_path, shared_h);
     let _ = out::symlink_file(implementation_path, shared_cc);
     Ok(())
+}
+
+fn best_effort_copy_headers(src: &Path, dst: &Path, max_depth: usize) {
+    // Not using crate::gen::fs because we aren't reporting the errors.
+    use std::fs;
+
+    let mut dst_created = false;
+    let mut entries = match fs::read_dir(src) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    while let Some(Ok(entry)) = entries.next() {
+        let file_name = entry.file_name();
+        if file_name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        match entry.file_type() {
+            Ok(file_type) if file_type.is_dir() && max_depth > 0 => {
+                let src = entry.path();
+                if src.join("Cargo.toml").exists() || src.join("CACHEDIR.TAG").exists() {
+                    continue;
+                }
+                let dst = dst.join(file_name);
+                best_effort_copy_headers(&src, &dst, max_depth - 1);
+            }
+            Ok(file_type) if file_type.is_file() => {
+                let src = entry.path();
+                if src.extension() != Some(OsStr::new("h")) {
+                    continue;
+                }
+                if !dst_created && fs::create_dir_all(dst).is_err() {
+                    return;
+                }
+                dst_created = true;
+                let dst = dst.join(file_name);
+                let _ = fs::remove_file(&dst);
+                let _ = fs::copy(src, dst);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn env_os(key: impl AsRef<OsStr>) -> Result<OsString> {

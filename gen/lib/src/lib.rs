@@ -11,7 +11,9 @@
 #![allow(
     clippy::inherent_to_string,
     clippy::new_without_default,
+    clippy::nonminimal_bool,
     clippy::or_fun_call,
+    clippy::too_many_arguments,
     clippy::toplevel_ref_arg
 )]
 
@@ -20,8 +22,9 @@ mod gen;
 mod syntax;
 
 pub use crate::error::Error;
-pub use crate::gen::include::HEADER;
+pub use crate::gen::include::{Include, HEADER};
 pub use crate::gen::{GeneratedCode, Opt};
+pub use crate::syntax::IncludeKind;
 use proc_macro2::TokenStream;
 
 /// Generate C++ bindings code from a Rust token stream. This should be a Rust

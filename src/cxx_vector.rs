@@ -1,7 +1,9 @@
 use crate::cxx_string::CxxString;
+use crate::extern_type::ExternType;
+use crate::kind::Trivial;
 use core::ffi::c_void;
-use core::fmt::{self, Display};
-use core::marker::PhantomData;
+use core::fmt::{self, Debug, Display};
+use core::marker::{PhantomData, PhantomPinned};
 use core::mem;
 use core::ptr;
 use core::slice;
@@ -17,6 +19,7 @@ use core::slice;
 #[repr(C, packed)]
 pub struct CxxVector<T> {
     _private: [T; 0],
+    _pinned: PhantomData<PhantomPinned>,
 }
 
 impl<T> CxxVector<T>
@@ -66,7 +69,10 @@ where
     }
 
     /// Returns a slice to the underlying contiguous array of elements.
-    pub fn as_slice(&self) -> &[T] {
+    pub fn as_slice(&self) -> &[T]
+    where
+        T: ExternType<Kind = Trivial>,
+    {
         let len = self.len();
         if len == 0 {
             // The slice::from_raw_parts in the other branch requires a nonnull
@@ -80,6 +86,11 @@ where
             let ptr = unsafe { T::__get_unchecked(self, 0) };
             unsafe { slice::from_raw_parts(ptr, len) }
         }
+    }
+
+    /// Returns an iterator over elements of type `&T`.
+    pub fn iter(&self) -> Iter<T> {
+        Iter { v: self, index: 0 }
     }
 }
 
@@ -96,7 +107,7 @@ where
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Iter { v: self, index: 0 }
+        self.iter()
     }
 }
 
@@ -110,6 +121,15 @@ where
         let next = self.v.get(self.index);
         self.index += 1;
         next
+    }
+}
+
+impl<T> Debug for CxxVector<T>
+where
+    T: VectorElement + Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.debug_list().entries(self).finish()
     }
 }
 
@@ -157,7 +177,7 @@ macro_rules! impl_vector_element {
             fn __vector_size(v: &CxxVector<$ty>) -> usize {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$std$vector$", $segment, "$size")]
+                        #[link_name = concat!("cxxbridge1$std$vector$", $segment, "$size")]
                         fn __vector_size(_: &CxxVector<$ty>) -> usize;
                     }
                 }
@@ -166,7 +186,7 @@ macro_rules! impl_vector_element {
             unsafe fn __get_unchecked(v: &CxxVector<$ty>, pos: usize) -> *const $ty {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$std$vector$", $segment, "$get_unchecked")]
+                        #[link_name = concat!("cxxbridge1$std$vector$", $segment, "$get_unchecked")]
                         fn __get_unchecked(_: &CxxVector<$ty>, _: usize) -> *const $ty;
                     }
                 }
@@ -175,7 +195,7 @@ macro_rules! impl_vector_element {
             fn __unique_ptr_null() -> *mut c_void {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$unique_ptr$std$vector$", $segment, "$null")]
+                        #[link_name = concat!("cxxbridge1$unique_ptr$std$vector$", $segment, "$null")]
                         fn __unique_ptr_null(this: *mut *mut c_void);
                     }
                 }
@@ -186,7 +206,7 @@ macro_rules! impl_vector_element {
             unsafe fn __unique_ptr_raw(raw: *mut CxxVector<Self>) -> *mut c_void {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$unique_ptr$std$vector$", $segment, "$raw")]
+                        #[link_name = concat!("cxxbridge1$unique_ptr$std$vector$", $segment, "$raw")]
                         fn __unique_ptr_raw(this: *mut *mut c_void, raw: *mut CxxVector<$ty>);
                     }
                 }
@@ -197,7 +217,7 @@ macro_rules! impl_vector_element {
             unsafe fn __unique_ptr_get(repr: *mut c_void) -> *const CxxVector<Self> {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$unique_ptr$std$vector$", $segment, "$get")]
+                        #[link_name = concat!("cxxbridge1$unique_ptr$std$vector$", $segment, "$get")]
                         fn __unique_ptr_get(this: *const *mut c_void) -> *const CxxVector<$ty>;
                     }
                 }
@@ -206,7 +226,7 @@ macro_rules! impl_vector_element {
             unsafe fn __unique_ptr_release(mut repr: *mut c_void) -> *mut CxxVector<Self> {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$unique_ptr$std$vector$", $segment, "$release")]
+                        #[link_name = concat!("cxxbridge1$unique_ptr$std$vector$", $segment, "$release")]
                         fn __unique_ptr_release(this: *mut *mut c_void) -> *mut CxxVector<$ty>;
                     }
                 }
@@ -215,7 +235,7 @@ macro_rules! impl_vector_element {
             unsafe fn __unique_ptr_drop(mut repr: *mut c_void) {
                 extern "C" {
                     attr! {
-                        #[link_name = concat!("cxxbridge05$unique_ptr$std$vector$", $segment, "$drop")]
+                        #[link_name = concat!("cxxbridge1$unique_ptr$std$vector$", $segment, "$drop")]
                         fn __unique_ptr_drop(this: *mut *mut c_void);
                     }
                 }

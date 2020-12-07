@@ -1,10 +1,14 @@
 use crate::syntax::atom::Atom::{self, *};
+use crate::syntax::improper::ImproperCtype;
 use crate::syntax::report::Errors;
-use crate::syntax::set::OrderedSet as Set;
-use crate::syntax::{Api, Derive, Enum, ExternFn, ExternType, Impl, Struct, Type, TypeAlias};
+use crate::syntax::set::{OrderedSet as Set, UnorderedSet};
+use crate::syntax::{
+    derive, toposort, Api, Enum, ExternFn, ExternType, Impl, Pair, RustName, Struct, Trait, Type,
+    TypeAlias,
+};
 use proc_macro2::Ident;
 use quote::ToTokens;
-use std::collections::{BTreeMap as Map, HashSet as UnorderedSet};
+use std::collections::BTreeMap as Map;
 
 pub struct Types<'a> {
     pub all: Set<&'a Type>,
@@ -16,6 +20,9 @@ pub struct Types<'a> {
     pub untrusted: Map<&'a Ident, &'a ExternType>,
     pub required_trivial: Map<&'a Ident, TrivialReason<'a>>,
     pub explicit_impls: Set<&'a Impl>,
+    pub resolutions: Map<&'a RustName, &'a Pair>,
+    pub struct_improper_ctypes: UnorderedSet<&'a Ident>,
+    pub toposorted_structs: Vec<&'a Struct>,
 }
 
 impl<'a> Types<'a> {
@@ -28,17 +35,22 @@ impl<'a> Types<'a> {
         let mut aliases = Map::new();
         let mut untrusted = Map::new();
         let mut explicit_impls = Set::new();
+        let mut resolutions = Map::new();
+        let struct_improper_ctypes = UnorderedSet::new();
+        let toposorted_structs = Vec::new();
 
         fn visit<'a>(all: &mut Set<&'a Type>, ty: &'a Type) {
             all.insert(ty);
             match ty {
-                Type::Ident(_) | Type::Str(_) | Type::Void(_) | Type::SliceRefU8(_) => {}
+                Type::Ident(_) | Type::Str(_) | Type::Void(_) => {}
                 Type::RustBox(ty)
                 | Type::UniquePtr(ty)
+                | Type::SharedPtr(ty)
                 | Type::CxxVector(ty)
                 | Type::RustVec(ty) => visit(all, &ty.inner),
                 Type::Ref(r) => visit(all, &r.inner),
-                Type::Slice(s) => visit(all, &s.inner),
+                Type::Array(a) => visit(all, &a.inner),
+                Type::SliceRef(s) => visit(all, &s.inner),
                 Type::Fn(f) => {
                     if let Some(ret) = &f.ret {
                         visit(all, ret);
@@ -49,6 +61,10 @@ impl<'a> Types<'a> {
                 }
             }
         }
+
+        let mut add_resolution = |pair: &'a Pair| {
+            resolutions.insert(RustName::from_ref(&pair.rust), pair);
+        };
 
         let mut type_names = UnorderedSet::new();
         let mut function_names = UnorderedSet::new();
@@ -62,7 +78,7 @@ impl<'a> Types<'a> {
             match api {
                 Api::Include(_) => {}
                 Api::Struct(strct) => {
-                    let ident = &strct.ident;
+                    let ident = &strct.name.rust;
                     if !type_names.insert(ident)
                         && (!cxx.contains(ident)
                             || structs.contains_key(ident)
@@ -73,13 +89,15 @@ impl<'a> Types<'a> {
                         // type, then error.
                         duplicate_name(cx, strct, ident);
                     }
-                    structs.insert(ident, strct);
+                    structs.insert(&strct.name.rust, strct);
                     for field in &strct.fields {
                         visit(&mut all, &field.ty);
                     }
+                    add_resolution(&strct.name);
                 }
                 Api::Enum(enm) => {
-                    let ident = &enm.ident;
+                    all.insert(&enm.repr_type);
+                    let ident = &enm.name.rust;
                     if !type_names.insert(ident)
                         && (!cxx.contains(ident)
                             || structs.contains_key(ident)
@@ -91,9 +109,10 @@ impl<'a> Types<'a> {
                         duplicate_name(cx, enm, ident);
                     }
                     enums.insert(ident, enm);
+                    add_resolution(&enm.name);
                 }
                 Api::CxxType(ety) => {
-                    let ident = &ety.ident;
+                    let ident = &ety.name.rust;
                     if !type_names.insert(ident)
                         && (cxx.contains(ident)
                             || !structs.contains_key(ident) && !enums.contains_key(ident))
@@ -107,19 +126,21 @@ impl<'a> Types<'a> {
                     if !ety.trusted {
                         untrusted.insert(ident, ety);
                     }
+                    add_resolution(&ety.name);
                 }
                 Api::RustType(ety) => {
-                    let ident = &ety.ident;
+                    let ident = &ety.name.rust;
                     if !type_names.insert(ident) {
                         duplicate_name(cx, ety, ident);
                     }
                     rust.insert(ident);
+                    add_resolution(&ety.name);
                 }
                 Api::CxxFunction(efn) | Api::RustFunction(efn) => {
                     // Note: duplication of the C++ name is fine because C++ has
                     // function overloading.
-                    if !function_names.insert((&efn.receiver, &efn.ident.rust)) {
-                        duplicate_name(cx, efn, &efn.ident.rust);
+                    if !function_names.insert((&efn.receiver, &efn.name.rust)) {
+                        duplicate_name(cx, efn, &efn.name.rust);
                     }
                     for arg in &efn.args {
                         visit(&mut all, &arg.ty);
@@ -129,12 +150,13 @@ impl<'a> Types<'a> {
                     }
                 }
                 Api::TypeAlias(alias) => {
-                    let ident = &alias.ident;
+                    let ident = &alias.name.rust;
                     if !type_names.insert(ident) {
                         duplicate_name(cx, alias, ident);
                     }
                     cxx.insert(ident);
                     aliases.insert(ident, alias);
+                    add_resolution(&alias.name);
                 }
                 Api::Impl(imp) => {
                     visit(&mut all, &imp.ty);
@@ -150,8 +172,11 @@ impl<'a> Types<'a> {
         let mut required_trivial = Map::new();
         let mut insist_alias_types_are_trivial = |ty: &'a Type, reason| {
             if let Type::Ident(ident) = ty {
-                if cxx.contains(ident) {
-                    required_trivial.entry(ident).or_insert(reason);
+                if cxx.contains(&ident.rust)
+                    && !structs.contains_key(&ident.rust)
+                    && !enums.contains_key(&ident.rust)
+                {
+                    required_trivial.entry(&ident.rust).or_insert(reason);
                 }
             }
         };
@@ -176,8 +201,21 @@ impl<'a> Types<'a> {
                 _ => {}
             }
         }
+        for ty in &all {
+            match ty {
+                Type::RustBox(ty) => {
+                    let reason = TrivialReason::BoxTarget;
+                    insist_alias_types_are_trivial(&ty.inner, reason);
+                }
+                Type::RustVec(ty) => {
+                    let reason = TrivialReason::VecElement;
+                    insist_alias_types_are_trivial(&ty.inner, reason);
+                }
+                _ => {}
+            }
+        }
 
-        Types {
+        let mut types = Types {
             all,
             structs,
             enums,
@@ -187,30 +225,73 @@ impl<'a> Types<'a> {
             untrusted,
             required_trivial,
             explicit_impls,
+            resolutions,
+            struct_improper_ctypes,
+            toposorted_structs,
+        };
+
+        types.toposorted_structs = toposort::sort(cx, apis, &types);
+
+        let mut unresolved_structs: Vec<&Ident> = types.structs.keys().copied().collect();
+        let mut new_information = true;
+        while new_information {
+            new_information = false;
+            unresolved_structs.retain(|ident| {
+                let mut retain = false;
+                for var in &types.structs[ident].fields {
+                    if match types.determine_improper_ctype(&var.ty) {
+                        ImproperCtype::Depends(inner) => {
+                            retain = true;
+                            types.struct_improper_ctypes.contains(inner)
+                        }
+                        ImproperCtype::Definite(improper) => improper,
+                    } {
+                        types.struct_improper_ctypes.insert(ident);
+                        new_information = true;
+                        return false;
+                    }
+                }
+                // If all fields definite false, remove from unresolved_structs.
+                retain
+            });
         }
+
+        types
     }
 
     pub fn needs_indirect_abi(&self, ty: &Type) -> bool {
         match ty {
             Type::Ident(ident) => {
-                if let Some(strct) = self.structs.get(ident) {
+                if let Some(strct) = self.structs.get(&ident.rust) {
                     !self.is_pod(strct)
                 } else {
-                    Atom::from(ident) == Some(RustString)
+                    Atom::from(&ident.rust) == Some(RustString)
                 }
             }
-            Type::RustVec(_) => true,
+            Type::SharedPtr(_) | Type::RustVec(_) | Type::Array(_) => true,
             _ => false,
         }
     }
 
     pub fn is_pod(&self, strct: &Struct) -> bool {
-        for derive in &strct.derives {
-            if *derive == Derive::Copy {
-                return true;
-            }
+        derive::contains(&strct.derives, Trait::Copy)
+    }
+
+    // Types that trigger rustc's default #[warn(improper_ctypes)] lint, even if
+    // they may be otherwise unproblematic to mention in an extern signature.
+    // For example in a signature like `extern "C" fn(*const String)`, rustc
+    // refuses to believe that C could know how to supply us with a pointer to a
+    // Rust String, even though C could easily have obtained that pointer
+    // legitimately from a Rust call.
+    pub fn is_considered_improper_ctype(&self, ty: &Type) -> bool {
+        match self.determine_improper_ctype(ty) {
+            ImproperCtype::Definite(improper) => improper,
+            ImproperCtype::Depends(ident) => self.struct_improper_ctypes.contains(ident),
         }
-        false
+    }
+
+    pub fn resolve(&self, ident: &RustName) -> &Pair {
+        self.resolutions.get(ident).expect("Unable to resolve type")
     }
 }
 
@@ -227,6 +308,8 @@ pub enum TrivialReason<'a> {
     StructField(&'a Struct),
     FunctionArgument(&'a ExternFn),
     FunctionReturn(&'a ExternFn),
+    BoxTarget,
+    VecElement,
 }
 
 fn duplicate_name(cx: &mut Errors, sp: impl ToTokens, ident: &Ident) {

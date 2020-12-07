@@ -36,7 +36,7 @@ pub struct ItemForeignMod {
 
 impl Parse for Module {
     fn parse(input: ParseStream) -> Result<Self> {
-        let namespace = Namespace::none();
+        let namespace = Namespace::ROOT;
         let mut attrs = input.call(Attribute::parse_outer)?;
         let vis: Visibility = input.parse()?;
         let unsafety: Option<Token![unsafe]> = input.parse()?;
@@ -94,7 +94,7 @@ impl Parse for Item {
             RustItem::Struct(item) => Ok(Item::Struct(ItemStruct { attrs, ..item })),
             RustItem::Enum(item) => Ok(Item::Enum(ItemEnum { attrs, ..item })),
             RustItem::ForeignMod(item) => Ok(Item::ForeignMod(ItemForeignMod {
-                attrs: item.attrs,
+                attrs,
                 unsafety,
                 abi: item.abi,
                 brace_token: item.brace_token,

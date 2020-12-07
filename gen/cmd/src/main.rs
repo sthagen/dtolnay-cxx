@@ -3,7 +3,9 @@
     clippy::inherent_to_string,
     clippy::large_enum_variant,
     clippy::new_without_default,
+    clippy::nonminimal_bool,
     clippy::or_fun_call,
+    clippy::too_many_arguments,
     clippy::toplevel_ref_arg
 )]
 
@@ -13,7 +15,8 @@ mod output;
 mod syntax;
 
 use crate::gen::error::{report, Result};
-use crate::gen::{fs, include};
+use crate::gen::fs;
+use crate::gen::include::{self, Include};
 use crate::output::Output;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -24,7 +27,7 @@ struct Opt {
     input: Option<PathBuf>,
     header: bool,
     cxx_impl_annotations: Option<String>,
-    include: Vec<String>,
+    include: Vec<Include>,
     outputs: Vec<Output>,
 }
 
@@ -65,6 +68,7 @@ fn try_main() -> Result<()> {
         cxx_impl_annotations: opt.cxx_impl_annotations,
         gen_header,
         gen_implementation,
+        ..Default::default()
     };
 
     let generated_code = if let Some(input) = opt.input {

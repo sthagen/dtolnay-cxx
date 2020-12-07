@@ -19,15 +19,17 @@ pub static ERRORS: &[Error] = &[
     CXX_STRING_BY_VALUE,
     CXX_TYPE_BY_VALUE,
     DISCRIMINANT_OVERFLOW,
+    DOT_INCLUDE,
     DOUBLE_UNDERSCORE,
     RUST_TYPE_BY_VALUE,
+    UNSUPPORTED_TYPE,
     USE_NOT_ALLOWED,
 ];
 
 pub static BOX_CXX_TYPE: Error = Error {
     msg: "Box of a C++ type is not supported yet",
     label: None,
-    note: Some("hint: use UniquePtr<>"),
+    note: Some("hint: use UniquePtr<> or SharedPtr<>"),
 };
 
 pub static CXXBRIDGE_RESERVED: Error = Error {
@@ -45,13 +47,19 @@ pub static CXX_STRING_BY_VALUE: Error = Error {
 pub static CXX_TYPE_BY_VALUE: Error = Error {
     msg: "C++ type by value is not supported",
     label: None,
-    note: Some("hint: wrap it in a UniquePtr<>"),
+    note: Some("hint: wrap it in a UniquePtr<> or SharedPtr<>"),
 };
 
 pub static DISCRIMINANT_OVERFLOW: Error = Error {
     msg: "discriminant overflow on value after ",
     label: Some("discriminant overflow"),
     note: Some("note: explicitly set `= 0` if that is desired outcome"),
+};
+
+pub static DOT_INCLUDE: Error = Error {
+    msg: "#include relative to `.` or `..` is not supported in Cargo builds",
+    label: Some("#include relative to `.` or `..` is not supported in Cargo builds"),
+    note: Some("note: use a path starting with the crate name"),
 };
 
 pub static DOUBLE_UNDERSCORE: Error = Error {
@@ -64,6 +72,12 @@ pub static RUST_TYPE_BY_VALUE: Error = Error {
     msg: "opaque Rust type by value is not supported",
     label: None,
     note: Some("hint: wrap it in a Box<>"),
+};
+
+pub static UNSUPPORTED_TYPE: Error = Error {
+    msg: "unsupported type: ",
+    label: Some("unsupported type"),
+    note: None,
 };
 
 pub static USE_NOT_ALLOWED: Error = Error {

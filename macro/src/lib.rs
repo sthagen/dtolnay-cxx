@@ -2,7 +2,10 @@
     clippy::inherent_to_string,
     clippy::large_enum_variant,
     clippy::new_without_default,
+    clippy::nonminimal_bool,
     clippy::or_fun_call,
+    clippy::single_match,
+    clippy::too_many_arguments,
     clippy::toplevel_ref_arg,
     clippy::useless_let_if_seq
 )]
@@ -18,7 +21,7 @@ use crate::syntax::file::Module;
 use crate::syntax::namespace::Namespace;
 use crate::syntax::qualified::QualifiedName;
 use proc_macro::TokenStream;
-use syn::parse::{Parse, ParseStream, Result};
+use syn::parse::{Parse, ParseStream, Parser, Result};
 use syn::parse_macro_input;
 
 /// `#[cxx::bridge] mod ffi { ... }`
@@ -27,12 +30,12 @@ use syn::parse_macro_input;
 /// is intended to be used.
 ///
 /// The only additional thing to note here is namespace support &mdash; if the
-/// types and functions on the `extern "C"` side of our bridge are in a
+/// types and functions on the `extern "C++"` side of our bridge are in a
 /// namespace, specify that namespace as an argument of the cxx::bridge
 /// attribute macro.
 ///
 /// ```
-/// #[cxx::bridge(namespace = mycompany::rust)]
+/// #[cxx::bridge(namespace = "mycompany::rust")]
 /// # mod ffi {}
 /// ```
 ///
@@ -42,7 +45,10 @@ use syn::parse_macro_input;
 pub fn bridge(args: TokenStream, input: TokenStream) -> TokenStream {
     let _ = syntax::error::ERRORS;
 
-    let namespace = parse_macro_input!(args as Namespace);
+    let namespace = match Namespace::parse_bridge_attr_namespace.parse(args) {
+        Ok(namespace) => namespace,
+        Err(err) => return err.to_compile_error().into(),
+    };
     let mut ffi = parse_macro_input!(input as Module);
     ffi.namespace = namespace;
 

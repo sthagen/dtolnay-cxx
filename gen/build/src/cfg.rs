@@ -1,9 +1,17 @@
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
+use std::path::Path;
 
 /// Build configuration. See [CFG].
 pub struct Cfg<'a> {
+    /// See [`CFG.include_prefix`][CFG#cfginclude_prefix].
     pub include_prefix: &'a str,
+    /// See [`CFG.exported_header_dirs`][CFG#cfgexported_header_dirs].
+    pub exported_header_dirs: Vec<&'a Path>,
+    /// See [`CFG.exported_header_prefixes`][CFG#cfgexported_header_prefixes].
+    pub exported_header_prefixes: Vec<&'a str>,
+    /// See [`CFG.exported_header_links`][CFG#cfgexported_header_links].
+    pub exported_header_links: Vec<&'a str>,
     marker: PhantomData<*const ()>, // !Send + !Sync
 }
 
@@ -11,14 +19,15 @@ pub struct Cfg<'a> {
 ///
 /// <br>
 ///
+/// <div style="float:right;margin:22px 50px 0;font-size:1.15em;color:#444"><strong>&amp;str</strong></div>
+///
 /// ## **`CFG.include_prefix`**
 ///
-/// Presently the only exposed configuration is the `include_prefix`, the prefix
-/// at which C++ code from your crate as well as directly dependent crates can
-/// access the code generated during this build.
+/// The prefix at which C++ code from your crate as well as directly dependent
+/// crates can access the code generated during this build.
 ///
 /// By default, the `include_prefix` is equal to the name of the current crate.
-/// That means if our crate is called `demo` and has Rust source files in a
+/// That means if your crate is called `demo` and has Rust source files in a
 /// *src/* directory and maybe some handwritten C++ header files in an
 /// *include/* directory, then the current crate as well as downstream crates
 /// might include them as follows:
@@ -59,17 +68,194 @@ pub struct Cfg<'a> {
 /// Additionally, headers from a direct dependency are only importable if the
 /// dependency's Cargo.toml manifest contains a `links` key. If not, its headers
 /// will not be importable from outside of the same crate.
+///
+/// <br>
+///
+/// <div style="float:right;margin:22px 50px 0;font-size:1.15em;color:#444"><strong>Vec&lt;&amp;Path&gt;</strong></div>
+///
+/// ## **`CFG.exported_header_dirs`**
+///
+/// A vector of absolute paths. The current crate, directly dependent crates,
+/// and further crates to which this crate's headers are exported (see below)
+/// will be able to `#include` headers from these directories.
+///
+/// Adding a directory to `exported_header_dirs` is similar to adding it to the
+/// current build via the `cc` crate's [`Build::include`][cc::Build::include],
+/// but *also* makes the directory available to downstream crates that want to
+/// `#include` one of the headers from your crate. If the dir were added only
+/// using `Build::include`, the downstream crate including your header would
+/// need to manually add the same directory to their own build as well.
+///
+/// When using `exported_header_dirs`, your crate must also set a `links` key
+/// for itself in Cargo.toml. See [*the `links` manifest key*][links]. The
+/// reason is that Cargo imposes no ordering on the execution of build scripts
+/// without a `links` key, which means the downstream crate's build script might
+/// execute before yours decides what to put into `exported_header_dirs`.
+///
+/// [links]: https://doc.rust-lang.org/cargo/reference/build-scripts.html#the-links-manifest-key
+///
+/// ### Example
+///
+/// One of your crate's headers wants to include a system library, such as
+/// `#include "Python.h"`.
+///
+/// ```no_run
+/// // build.rs
+///
+/// use cxx_build::CFG;
+/// use std::path::PathBuf;
+///
+/// fn main() {
+///     let python3 = pkg_config::probe_library("python3").unwrap();
+///     let python_include_paths = python3.include_paths.iter().map(PathBuf::as_path);
+///     CFG.exported_header_dirs.extend(python_include_paths);
+///
+///     cxx_build::bridge("src/bridge.rs").compile("demo");
+/// }
+/// ```
+///
+/// ### Example
+///
+/// Your crate wants to rearrange the headers that it exports vs how they're
+/// laid out locally inside the crate's source directory.
+///
+/// Suppose the crate as published contains a file at `./include/myheader.h` but
+/// wants it available to downstream crates as `#include "foo/v1/public.h"`.
+///
+/// ```no_run
+/// // build.rs
+///
+/// use cxx_build::CFG;
+/// use std::path::Path;
+/// use std::{env, fs};
+///
+/// fn main() {
+///     let out_dir = env::var_os("OUT_DIR").unwrap();
+///     let headers = Path::new(&out_dir).join("headers");
+///     CFG.exported_header_dirs.push(&headers);
+///
+///     // We contain `include/myheader.h` locally, but
+///     // downstream will use `#include "foo/v1/public.h"`
+///     let foo = headers.join("foo").join("v1");
+///     fs::create_dir_all(&foo).unwrap();
+///     fs::copy("include/myheader.h", foo.join("public.h")).unwrap();
+///
+///     cxx_build::bridge("src/bridge.rs").compile("demo");
+/// }
+/// ```
+///
+/// <p style="margin:0"><br><br></p>
+///
+/// <div style="float:right;margin:22px 50px 0;font-size:1.15em;color:#444"><strong>Vec&lt;&amp;str&gt;</strong></div>
+///
+/// ## **`CFG.exported_header_prefixes`**
+///
+/// Vector of strings. These each refer to the `include_prefix` of one of your
+/// direct dependencies, or a prefix thereof. They describe which of your
+/// dependencies participate in your crate's C++ public API, as opposed to
+/// private use by your crate's implementation.
+///
+/// As a general rule, if one of your headers `#include`s something from one of
+/// your dependencies, you need to put that dependency's `include_prefix` into
+/// `CFG.exported_header_prefixes` (*or* their `links` key into
+/// `CFG.exported_header_links`; see below). On the other hand if only your C++
+/// implementation files and *not* your headers are importing from the
+/// dependency, you do not export that dependency.
+///
+/// The significance of exported headers is that if downstream code (crate 𝒜)
+/// contains an `#include` of a header from your crate (ℬ) and your header
+/// contains an `#include` of something from your dependency (𝒞), the exported
+/// dependency 𝒞 becomes available during the downstream crate 𝒜's build.
+/// Otherwise the downstream crate 𝒜 doesn't know about 𝒞 and wouldn't be able
+/// to find what header your header is referring to, and would fail to build.
+///
+/// When using `exported_header_prefixes`, your crate must also set a `links`
+/// key for itself in Cargo.toml.
+///
+/// ### Example
+///
+/// Suppose you have a crate with 5 direct dependencies and the `include_prefix`
+/// for each one are:
+///
+/// - "crate0"
+/// - "group/api/crate1"
+/// - "group/api/crate2"
+/// - "group/api/contrib/crate3"
+/// - "detail/crate4"
+///
+/// Your header involves types from the first four so we re-export those as part
+/// of your public API, while crate4 is only used internally by your cc file not
+/// your header, so we do not export:
+///
+/// ```no_run
+/// // build.rs
+///
+/// use cxx_build::CFG;
+///
+/// fn main() {
+///     CFG.exported_header_prefixes = vec!["crate0", "group/api"];
+///
+///     cxx_build::bridge("src/bridge.rs")
+///         .file("src/impl.cc")
+///         .compile("demo");
+/// }
+/// ```
+///
+/// <p style="margin:0"><br><br></p>
+///
+/// <div style="float:right;margin:22px 50px 0;font-size:1.15em;color:#444"><strong>Vec&lt;&amp;str&gt;</strong></div>
+///
+/// ## **`CFG.exported_header_links`**
+///
+/// Vector of strings. These each refer to the `links` attribute ([*the `links`
+/// manifest key*][links]) of one of your crate's direct dependencies.
+///
+/// This achieves an equivalent result to `CFG.exported_header_prefixes` by
+/// re-exporting a dependency as part of your crate's public API, except with
+/// finer grained control for cases when multiple crates might be sharing the
+/// same `include_prefix` and you'd like to export some but not others. Links
+/// attributes are guaranteed to be unique identifiers by Cargo.
+///
+/// When using `exported_header_links`, your crate must also set a `links` key
+/// for itself in Cargo.toml.
+///
+/// ### Example
+///
+/// ```no_run
+/// // build.rs
+///
+/// use cxx_build::CFG;
+///
+/// fn main() {
+///     CFG.exported_header_links.push("git2");
+///
+///     cxx_build::bridge("src/bridge.rs").compile("demo");
+/// }
+/// ```
 #[cfg(doc)]
 pub static mut CFG: Cfg = Cfg {
     include_prefix: "",
+    exported_header_dirs: Vec::new(),
+    exported_header_prefixes: Vec::new(),
+    exported_header_links: Vec::new(),
     marker: PhantomData,
 };
 
 impl<'a> Debug for Cfg<'a> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let Self {
+            include_prefix,
+            exported_header_dirs,
+            exported_header_prefixes,
+            exported_header_links,
+            marker: _,
+        } = self;
         formatter
             .debug_struct("Cfg")
-            .field("include_prefix", &self.include_prefix)
+            .field("include_prefix", include_prefix)
+            .field("exported_header_dirs", exported_header_dirs)
+            .field("exported_header_prefixes", exported_header_prefixes)
+            .field("exported_header_links", exported_header_links)
             .finish()
     }
 }
@@ -79,6 +265,8 @@ pub use self::r#impl::Cfg::CFG;
 
 #[cfg(not(doc))]
 mod r#impl {
+    use crate::intern::{intern, InternedString};
+    use crate::vec::{self, InternedVec as _};
     use lazy_static::lazy_static;
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -87,13 +275,32 @@ mod r#impl {
     use std::ops::{Deref, DerefMut};
     use std::sync::{PoisonError, RwLock};
 
+    struct CurrentCfg {
+        include_prefix: InternedString,
+        exported_header_dirs: Vec<InternedString>,
+        exported_header_prefixes: Vec<InternedString>,
+        exported_header_links: Vec<InternedString>,
+    }
+
+    impl CurrentCfg {
+        fn default() -> Self {
+            let include_prefix = crate::env_os("CARGO_PKG_NAME")
+                .map(|pkg| intern(&pkg.to_string_lossy()))
+                .unwrap_or_default();
+            let exported_header_dirs = Vec::new();
+            let exported_header_prefixes = Vec::new();
+            let exported_header_links = Vec::new();
+            CurrentCfg {
+                include_prefix,
+                exported_header_dirs,
+                exported_header_prefixes,
+                exported_header_links,
+            }
+        }
+    }
+
     lazy_static! {
-        static ref PACKAGE_NAME: Box<str> = {
-            crate::env_os("CARGO_PKG_NAME")
-                .map(|pkg| pkg.to_string_lossy().into_owned().into_boxed_str())
-                .unwrap_or_default()
-        };
-        static ref INCLUDE_PREFIX: RwLock<Vec<&'static str>> = RwLock::new(vec![&PACKAGE_NAME]);
+        static ref CURRENT: RwLock<CurrentCfg> = RwLock::new(CurrentCfg::default());
     }
 
     thread_local! {
@@ -117,13 +324,16 @@ mod r#impl {
 
     impl<'a> Cfg<'a> {
         fn current() -> super::Cfg<'a> {
-            let include_prefix = *INCLUDE_PREFIX
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .last()
-                .unwrap();
+            let current = CURRENT.read().unwrap_or_else(PoisonError::into_inner);
+            let include_prefix = current.include_prefix.str();
+            let exported_header_dirs = current.exported_header_dirs.vec();
+            let exported_header_prefixes = current.exported_header_prefixes.vec();
+            let exported_header_links = current.exported_header_links.vec();
             super::Cfg {
                 include_prefix,
+                exported_header_dirs,
+                exported_header_prefixes,
+                exported_header_links,
                 marker: PhantomData,
             }
         }
@@ -184,10 +394,11 @@ mod r#impl {
     impl<'a> Drop for Cfg<'a> {
         fn drop(&mut self) {
             if let Cfg::Mut(cfg) = self {
-                INCLUDE_PREFIX
-                    .write()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(Box::leak(Box::from(cfg.include_prefix)));
+                let mut current = CURRENT.write().unwrap_or_else(PoisonError::into_inner);
+                current.include_prefix = intern(cfg.include_prefix);
+                current.exported_header_dirs = vec::intern(&cfg.exported_header_dirs);
+                current.exported_header_prefixes = vec::intern(&cfg.exported_header_prefixes);
+                current.exported_header_links = vec::intern(&cfg.exported_header_links);
             } else {
                 CONST_DEREFS.with(|derefs| derefs.borrow_mut().remove(&self.handle()));
             }

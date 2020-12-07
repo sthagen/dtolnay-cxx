@@ -1,5 +1,7 @@
-use cxx_test_suite::extra::ffi2;
-use cxx_test_suite::ffi;
+#![allow(clippy::assertions_on_constants, clippy::float_cmp, clippy::unit_cmp)]
+
+use cxx_test_suite::module::ffi2;
+use cxx_test_suite::{cast, ffi, R};
 use std::cell::Cell;
 use std::ffi::CStr;
 
@@ -16,21 +18,34 @@ macro_rules! check {
     ($run:expr) => {{
         CORRECT.with(|correct| correct.set(false));
         $run;
-        assert!(CORRECT.with(|correct| correct.get()), stringify!($run));
+        assert!(
+            CORRECT.with(|correct| correct.get()),
+            "{}",
+            stringify!($run),
+        );
     }};
 }
 
 #[test]
 fn test_c_return() {
     let shared = ffi::Shared { z: 2020 };
+    let ns_shared = ffi::AShared { z: 2020 };
+    let nested_ns_shared = ffi::ABShared { z: 2020 };
 
     assert_eq!(2020, ffi::c_return_primitive());
     assert_eq!(2020, ffi::c_return_shared().z);
-    assert_eq!(2020, *ffi::c_return_box());
+    assert_eq!(2020, ffi::c_return_box().0);
     ffi::c_return_unique_ptr();
+    ffi::c_return_shared_ptr();
+    ffi2::c_return_ns_unique_ptr();
     assert_eq!(2020, *ffi::c_return_ref(&shared));
+    assert_eq!(2020, *ffi::c_return_ns_ref(&ns_shared));
+    assert_eq!(2020, *ffi::c_return_nested_ns_ref(&nested_ns_shared));
     assert_eq!("2020", ffi::c_return_str(&shared));
-    assert_eq!(b"2020\0", ffi::c_return_sliceu8(&shared));
+    assert_eq!(
+        b"2020\0",
+        cast::c_char_to_unsigned(ffi::c_return_slice_char(&shared)),
+    );
     assert_eq!("2020", ffi::c_return_rust_string());
     assert_eq!("2020", ffi::c_return_unique_ptr_string().to_str().unwrap());
     assert_eq!(4, ffi::c_return_unique_ptr_vector_u8().len());
@@ -64,6 +79,14 @@ fn test_c_return() {
         enm @ ffi::Enum::CVal => assert_eq!(2021, enm.repr),
         _ => assert!(false),
     }
+    match ffi::c_return_ns_enum(0) {
+        enm @ ffi::AEnum::AAVal => assert_eq!(0, enm.repr),
+        _ => assert!(false),
+    }
+    match ffi::c_return_nested_ns_enum(0) {
+        enm @ ffi::ABEnum::ABAVal => assert_eq!(0, enm.repr),
+        _ => assert!(false),
+    }
 }
 
 #[test]
@@ -74,7 +97,7 @@ fn test_c_try_return() {
         "logic error",
         ffi::c_fail_return_primitive().unwrap_err().what(),
     );
-    assert_eq!(2020, *ffi::c_try_return_box().unwrap());
+    assert_eq!(2020, ffi::c_try_return_box().unwrap().0);
     assert_eq!("2020", *ffi::c_try_return_ref(&"2020".to_owned()).unwrap());
     assert_eq!("2020", ffi::c_try_return_str("2020").unwrap());
     assert_eq!(b"2020", ffi::c_try_return_sliceu8(b"2020").unwrap());
@@ -85,14 +108,23 @@ fn test_c_try_return() {
 #[test]
 fn test_c_take() {
     let unique_ptr = ffi::c_return_unique_ptr();
+    let unique_ptr_ns = ffi2::c_return_ns_unique_ptr();
 
     check!(ffi::c_take_primitive(2020));
     check!(ffi::c_take_shared(ffi::Shared { z: 2020 }));
-    check!(ffi::c_take_box(Box::new(2020)));
+    check!(ffi::c_take_ns_shared(ffi::AShared { z: 2020 }));
+    check!(ffi::ns_c_take_ns_shared(ffi::AShared { z: 2020 }));
+    check!(ffi::c_take_nested_ns_shared(ffi::ABShared { z: 2020 }));
+    check!(ffi::c_take_box(Box::new(R(2020))));
     check!(ffi::c_take_ref_c(&unique_ptr));
+    check!(ffi2::c_take_ref_ns_c(&unique_ptr_ns));
     check!(cxx_test_suite::module::ffi::c_take_unique_ptr(unique_ptr));
     check!(ffi::c_take_str("2020"));
-    check!(ffi::c_take_sliceu8(b"2020"));
+    check!(ffi::c_take_slice_char(cast::unsigned_to_c_char(b"2020")));
+    check!(ffi::c_take_slice_shared(&[
+        ffi::Shared { z: 2020 },
+        ffi::Shared { z: 2021 },
+    ]));
     check!(ffi::c_take_rust_string("2020".to_owned()));
     check!(ffi::c_take_unique_ptr_string(
         ffi::c_return_unique_ptr_string()
@@ -113,17 +145,35 @@ fn test_c_take() {
     let shared_test_vec = vec![ffi::Shared { z: 1010 }, ffi::Shared { z: 1011 }];
     check!(ffi::c_take_rust_vec_shared(shared_test_vec.clone()));
     check!(ffi::c_take_rust_vec_shared_index(shared_test_vec.clone()));
+    check!(ffi::c_take_rust_vec_shared_push(shared_test_vec.clone()));
     check!(ffi::c_take_rust_vec_shared_forward_iterator(
         shared_test_vec,
     ));
+    let shared_sort_vec = vec![
+        ffi::Shared { z: 2 },
+        ffi::Shared { z: 0 },
+        ffi::Shared { z: 7 },
+        ffi::Shared { z: 4 },
+    ];
+    check!(ffi::c_take_rust_vec_shared_sort(shared_sort_vec));
     check!(ffi::c_take_ref_rust_vec(&test_vec));
     check!(ffi::c_take_ref_rust_vec_index(&test_vec));
     check!(ffi::c_take_ref_rust_vec_copy(&test_vec));
+    check!(ffi::c_take_ref_shared_string(&ffi::SharedString {
+        msg: "2020".to_owned()
+    }));
+    let ns_shared_test_vec = vec![ffi::AShared { z: 1010 }, ffi::AShared { z: 1011 }];
+    check!(ffi::c_take_rust_vec_ns_shared(ns_shared_test_vec));
+    let nested_ns_shared_test_vec = vec![ffi::ABShared { z: 1010 }, ffi::ABShared { z: 1011 }];
+    check!(ffi::c_take_rust_vec_nested_ns_shared(
+        nested_ns_shared_test_vec
+    ));
+
     check!(ffi::c_take_enum(ffi::Enum::AVal));
+    check!(ffi::c_take_ns_enum(ffi::AEnum::AAVal));
+    check!(ffi::c_take_nested_ns_enum(ffi::ABEnum::ABAVal));
 }
 
-/*
-// https://github.com/dtolnay/cxx/issues/232
 #[test]
 fn test_c_callback() {
     fn callback(s: String) -> usize {
@@ -135,7 +185,6 @@ fn test_c_callback() {
 
     check!(ffi::c_take_callback(callback));
 }
-*/
 
 #[test]
 fn test_c_call_r() {
@@ -158,12 +207,25 @@ fn test_c_method_calls() {
 
     let old_value = unique_ptr.get();
     assert_eq!(2020, old_value);
-    assert_eq!(2021, unique_ptr.set(2021));
+    assert_eq!(2021, unique_ptr.pin_mut().set(2021));
     assert_eq!(2021, unique_ptr.get());
-    assert_eq!(old_value, unique_ptr.set2(old_value));
-    assert_eq!(old_value, unique_ptr.get2());
-    assert_eq!(2022, unique_ptr.set_succeed(2022).unwrap());
-    assert!(unique_ptr.get_fail().is_err());
+    assert_eq!(2021, unique_ptr.get2());
+    assert_eq!(2022, unique_ptr.pin_mut().set_succeed(2022).unwrap());
+    assert!(unique_ptr.pin_mut().get_fail().is_err());
+    assert_eq!(2021, ffi::Shared { z: 0 }.c_method_on_shared());
+
+    let val = 42;
+    let mut array = ffi::Array { a: [0, 0, 0, 0] };
+    array.c_set_array(val);
+    assert_eq!(array.a.len() as i32 * val, array.r_get_array_sum());
+}
+
+#[test]
+fn test_c_ns_method_calls() {
+    let unique_ptr = ffi2::ns_c_return_unique_ptr_ns();
+
+    let old_value = unique_ptr.get();
+    assert_eq!(1000, old_value);
 }
 
 #[test]
@@ -173,14 +235,21 @@ fn test_enum_representations() {
     assert_eq!(2021, ffi::Enum::CVal.repr);
 }
 
-#[no_mangle]
-extern "C" fn cxx_test_suite_get_box() -> *mut cxx_test_suite::R {
-    Box::into_raw(Box::new(2020usize))
+#[test]
+fn test_debug() {
+    assert_eq!("Shared { z: 1 }", format!("{:?}", ffi::Shared { z: 1 }));
+    assert_eq!("BVal", format!("{:?}", ffi::Enum::BVal));
+    assert_eq!("Enum(9)", format!("{:?}", ffi::Enum { repr: 9 }));
 }
 
 #[no_mangle]
-unsafe extern "C" fn cxx_test_suite_r_is_correct(r: *const cxx_test_suite::R) -> bool {
-    *r == 2020
+extern "C" fn cxx_test_suite_get_box() -> *mut R {
+    Box::into_raw(Box::new(R(2020usize)))
+}
+
+#[no_mangle]
+unsafe extern "C" fn cxx_test_suite_r_is_correct(r: *const R) -> bool {
+    (*r).0 == 2020
 }
 
 #[test]
@@ -200,6 +269,15 @@ fn test_extern_trivial() {
     let d = ffi2::c_return_trivial_ptr();
     check!(ffi2::c_take_trivial_ptr(d));
     cxx::UniquePtr::new(ffi2::D { d: 42 });
+    let d = ffi2::ns_c_return_trivial();
+    check!(ffi2::ns_c_take_trivial(d));
+
+    let g = ffi2::c_return_trivial_ns();
+    check!(ffi2::c_take_trivial_ns_ref(&g));
+    check!(ffi2::c_take_trivial_ns(g));
+    let g = ffi2::c_return_trivial_ns_ptr();
+    check!(ffi2::c_take_trivial_ns_ptr(g));
+    cxx::UniquePtr::new(ffi2::G { g: 42 });
 }
 
 #[test]
@@ -207,4 +285,8 @@ fn test_extern_opaque() {
     let e = ffi2::c_return_opaque_ptr();
     check!(ffi2::c_take_opaque_ref(e.as_ref().unwrap()));
     check!(ffi2::c_take_opaque_ptr(e));
+
+    let f = ffi2::c_return_ns_opaque_ptr();
+    check!(ffi2::c_take_opaque_ns_ref(f.as_ref().unwrap()));
+    check!(ffi2::c_take_opaque_ns_ptr(f));
 }

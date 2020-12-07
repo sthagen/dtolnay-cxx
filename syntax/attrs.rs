@@ -1,3 +1,4 @@
+use crate::syntax::namespace::Namespace;
 use crate::syntax::report::Errors;
 use crate::syntax::Atom::{self, *};
 use crate::syntax::{Derive, Doc};
@@ -12,19 +13,7 @@ pub struct Parser<'a> {
     pub repr: Option<&'a mut Option<Atom>>,
     pub cxx_name: Option<&'a mut Option<Ident>>,
     pub rust_name: Option<&'a mut Option<Ident>>,
-}
-
-pub(super) fn parse_doc(cx: &mut Errors, attrs: &[Attribute]) -> Doc {
-    let mut doc = Doc::new();
-    parse(
-        cx,
-        attrs,
-        Parser {
-            doc: Some(&mut doc),
-            ..Parser::default()
-        },
-    );
-    doc
+    pub namespace: Option<&'a mut Namespace>,
 }
 
 pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
@@ -40,7 +29,7 @@ pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
                 Err(err) => return cx.push(err),
             }
         } else if attr.path.is_ident("derive") {
-            match attr.parse_args_with(parse_derive_attribute) {
+            match attr.parse_args_with(|attr: ParseStream| parse_derive_attribute(cx, attr)) {
                 Ok(attr) => {
                     if let Some(derives) = &mut parser.derives {
                         derives.extend(attr);
@@ -79,6 +68,16 @@ pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
                 }
                 Err(err) => return cx.push(err),
             }
+        } else if attr.path.is_ident("namespace") {
+            match parse_namespace_attribute.parse2(attr.tokens.clone()) {
+                Ok(attr) => {
+                    if let Some(namespace) = &mut parser.namespace {
+                        **namespace = attr;
+                        continue;
+                    }
+                }
+                Err(err) => return cx.push(err),
+            }
         }
         return cx.error(attr, "unsupported attribute");
     }
@@ -90,19 +89,20 @@ fn parse_doc_attribute(input: ParseStream) -> Result<LitStr> {
     Ok(lit)
 }
 
-fn parse_derive_attribute(input: ParseStream) -> Result<Vec<Derive>> {
-    input
-        .parse_terminated::<Path, Token![,]>(Path::parse_mod_style)?
-        .into_iter()
-        .map(|path| {
-            if let Some(ident) = path.get_ident() {
-                if let Some(derive) = Derive::from(ident) {
-                    return Ok(derive);
-                }
+fn parse_derive_attribute(cx: &mut Errors, input: ParseStream) -> Result<Vec<Derive>> {
+    let paths = input.parse_terminated::<Path, Token![,]>(Path::parse_mod_style)?;
+
+    let mut derives = Vec::new();
+    for path in paths {
+        if let Some(ident) = path.get_ident() {
+            if let Some(derive) = Derive::from(ident) {
+                derives.push(derive);
+                continue;
             }
-            Err(Error::new_spanned(path, "unsupported derive"))
-        })
-        .collect()
+        }
+        cx.error(path, "unsupported derive");
+    }
+    Ok(derives)
 }
 
 fn parse_repr_attribute(input: ParseStream) -> Result<Atom> {
@@ -130,4 +130,10 @@ fn parse_function_alias_attribute(input: ParseStream) -> Result<Ident> {
     } else {
         input.parse()
     }
+}
+
+fn parse_namespace_attribute(input: ParseStream) -> Result<Namespace> {
+    input.parse::<Token![=]>()?;
+    let namespace = input.parse::<Namespace>()?;
+    Ok(namespace)
 }

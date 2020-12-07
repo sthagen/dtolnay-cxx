@@ -1,6 +1,5 @@
 use crate::syntax::check::Check;
-use crate::syntax::namespace::Namespace;
-use crate::syntax::{error, Api};
+use crate::syntax::{error, Api, Pair};
 use proc_macro2::Ident;
 
 fn check(cx: &mut Check, ident: &Ident) {
@@ -13,37 +12,40 @@ fn check(cx: &mut Check, ident: &Ident) {
     }
 }
 
-pub(crate) fn check_all(cx: &mut Check, namespace: &Namespace, apis: &[Api]) {
-    for segment in namespace {
+fn check_ident(cx: &mut Check, name: &Pair) {
+    for segment in &name.namespace {
         check(cx, segment);
     }
+    check(cx, &name.cxx);
+}
 
+pub(crate) fn check_all(cx: &mut Check, apis: &[Api]) {
     for api in apis {
         match api {
             Api::Include(_) | Api::Impl(_) => {}
             Api::Struct(strct) => {
-                check(cx, &strct.ident);
+                check_ident(cx, &strct.name);
                 for field in &strct.fields {
                     check(cx, &field.ident);
                 }
             }
             Api::Enum(enm) => {
-                check(cx, &enm.ident);
+                check_ident(cx, &enm.name);
                 for variant in &enm.variants {
                     check(cx, &variant.ident);
                 }
             }
             Api::CxxType(ety) | Api::RustType(ety) => {
-                check(cx, &ety.ident);
+                check_ident(cx, &ety.name);
             }
             Api::CxxFunction(efn) | Api::RustFunction(efn) => {
-                check(cx, &efn.ident.rust);
+                check(cx, &efn.name.rust);
                 for arg in &efn.args {
                     check(cx, &arg.ident);
                 }
             }
             Api::TypeAlias(alias) => {
-                check(cx, &alias.ident);
+                check_ident(cx, &alias.name);
             }
         }
     }

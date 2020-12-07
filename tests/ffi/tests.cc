@@ -2,10 +2,11 @@
 #include "tests/ffi/lib.rs.h"
 #include <cstring>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
-#include <memory>
 #include <string>
+#include <tuple>
 
 extern "C" void cxx_test_suite_set_correct() noexcept;
 extern "C" tests::R *cxx_test_suite_get_box() noexcept;
@@ -26,14 +27,15 @@ size_t C::set(size_t n) {
   return this->n;
 }
 
-size_t C::set2(size_t n) {
-  this->n = n;
-  return this->n;
-}
-
-size_t C::set_succeed(size_t n) { return this->set2(n); }
+size_t C::set_succeed(size_t n) { return this->set(n); }
 
 size_t C::get_fail() { throw std::runtime_error("unimplemented"); }
+
+size_t Shared::c_method_on_shared() const noexcept { return 2021; }
+
+void Array::c_set_array(int32_t val) noexcept {
+  this->a = {val, val, val, val};
+}
 
 const std::vector<uint8_t> &C::get_v() const { return this->v; }
 
@@ -43,6 +45,10 @@ size_t c_return_primitive() { return 2020; }
 
 Shared c_return_shared() { return Shared{2020}; }
 
+::A::AShared c_return_ns_shared() { return ::A::AShared{2020}; }
+
+::A::B::ABShared c_return_nested_ns_shared() { return ::A::B::ABShared{2020}; }
+
 rust::Box<R> c_return_box() {
   return rust::Box<R>::from_raw(cxx_test_suite_get_box());
 }
@@ -51,7 +57,21 @@ std::unique_ptr<C> c_return_unique_ptr() {
   return std::unique_ptr<C>(new C{2020});
 }
 
+std::shared_ptr<C> c_return_shared_ptr() {
+  return std::shared_ptr<C>(new C{2020});
+}
+
+std::unique_ptr<::H::H> c_return_ns_unique_ptr() {
+  return std::unique_ptr<::H::H>(new ::H::H{"hello"});
+}
+
 const size_t &c_return_ref(const Shared &shared) { return shared.z; }
+
+const size_t &c_return_ns_ref(const ::A::AShared &shared) { return shared.z; }
+
+const size_t &c_return_nested_ns_ref(const ::A::B::ABShared &shared) {
+  return shared.z;
+}
 
 size_t &c_return_mut(Shared &shared) { return shared.z; }
 
@@ -60,10 +80,13 @@ rust::Str c_return_str(const Shared &shared) {
   return "2020";
 }
 
-rust::Slice<uint8_t> c_return_sliceu8(const Shared &shared) {
+rust::Slice<const char> c_return_slice_char(const Shared &shared) {
   (void)shared;
-  return rust::Slice<uint8_t>(reinterpret_cast<const uint8_t *>(SLICE_DATA),
-                              sizeof(SLICE_DATA));
+  return rust::Slice<const char>(SLICE_DATA, sizeof(SLICE_DATA));
+}
+
+rust::Slice<uint8_t> c_return_mutsliceu8(rust::Slice<uint8_t> slice) {
+  return slice;
 }
 
 rust::String c_return_rust_string() { return "2020"; }
@@ -113,7 +136,8 @@ const std::vector<uint8_t> &c_return_ref_vector(const C &c) {
 std::vector<uint8_t> &c_return_mut_vector(C &c) { return c.get_v(); }
 
 rust::Vec<uint8_t> c_return_rust_vec() {
-  throw std::runtime_error("unimplemented");
+  rust::Vec<uint8_t> vec{2, 0, 2, 0};
+  return vec;
 }
 
 const rust::Vec<uint8_t> &c_return_ref_rust_vec(const C &c) {
@@ -127,7 +151,7 @@ rust::Vec<uint8_t> &c_return_mut_rust_vec(C &c) {
 }
 
 rust::Vec<rust::String> c_return_rust_vec_string() {
-  throw std::runtime_error("unimplemented");
+  return {"2", "0", "2", "0"};
 }
 
 size_t c_return_identity(size_t n) { return n; }
@@ -144,6 +168,26 @@ Enum c_return_enum(uint16_t n) {
   }
 }
 
+::A::AEnum c_return_ns_enum(uint16_t n) {
+  if (n <= static_cast<uint16_t>(::A::AEnum::AAVal)) {
+    return ::A::AEnum::AAVal;
+  } else if (n <= static_cast<uint16_t>(::A::AEnum::ABVal)) {
+    return ::A::AEnum::ABVal;
+  } else {
+    return ::A::AEnum::ACVal;
+  }
+}
+
+::A::B::ABEnum c_return_nested_ns_enum(uint16_t n) {
+  if (n <= static_cast<uint16_t>(::A::B::ABEnum::ABAVal)) {
+    return ::A::B::ABEnum::ABAVal;
+  } else if (n <= static_cast<uint16_t>(::A::B::ABEnum::ABBVal)) {
+    return ::A::B::ABEnum::ABBVal;
+  } else {
+    return ::A::B::ABEnum::ABCVal;
+  }
+}
+
 void c_take_primitive(size_t n) {
   if (n == 2020) {
     cxx_test_suite_set_correct();
@@ -151,6 +195,18 @@ void c_take_primitive(size_t n) {
 }
 
 void c_take_shared(Shared shared) {
+  if (shared.z == 2020) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_ns_shared(::A::AShared shared) {
+  if (shared.z == 2020) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_nested_ns_shared(::A::B::ABShared shared) {
   if (shared.z == 2020) {
     cxx_test_suite_set_correct();
   }
@@ -180,15 +236,26 @@ void c_take_ref_c(const C &c) {
   }
 }
 
+void c_take_ref_ns_c(const ::H::H &h) {
+  if (h.h == "hello") {
+    cxx_test_suite_set_correct();
+  }
+}
+
 void c_take_str(rust::Str s) {
   if (std::string(s) == "2020") {
     cxx_test_suite_set_correct();
   }
 }
 
-void c_take_sliceu8(rust::Slice<uint8_t> s) {
-  if (std::string(reinterpret_cast<const char *>(s.data()), s.size()) ==
-      "2020") {
+void c_take_slice_char(rust::Slice<const char> s) {
+  if (std::string(s.data(), s.size()) == "2020") {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_slice_shared(rust::Slice<const Shared> s) {
+  if (s.size() == 2 && s.data()->z == 2020 && (s.data() + 1)->z == 2021) {
     cxx_test_suite_set_correct();
   }
 }
@@ -258,6 +325,26 @@ void c_take_rust_vec_shared(rust::Vec<Shared> v) {
   }
 }
 
+void c_take_rust_vec_ns_shared(rust::Vec<::A::AShared> v) {
+  uint32_t sum = 0;
+  for (auto i : v) {
+    sum += i.z;
+  }
+  if (sum == 2021) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_rust_vec_nested_ns_shared(rust::Vec<::A::B::ABShared> v) {
+  uint32_t sum = 0;
+  for (auto i : v) {
+    sum += i.z;
+  }
+  if (sum == 2021) {
+    cxx_test_suite_set_correct();
+  }
+}
+
 void c_take_rust_vec_string(rust::Vec<rust::String> v) {
   (void)v;
   cxx_test_suite_set_correct();
@@ -266,11 +353,23 @@ void c_take_rust_vec_string(rust::Vec<rust::String> v) {
 void c_take_rust_vec_shared_forward_iterator(rust::Vec<Shared> v) {
   // Exercise requirements of ForwardIterator
   // https://en.cppreference.com/w/cpp/named_req/ForwardIterator
-  uint32_t sum = 0;
+  uint32_t sum = 0, csum = 0;
   for (auto it = v.begin(), it_end = v.end(); it != it_end; it++) {
     sum += it->z;
   }
-  if (sum == 2021) {
+  for (auto it = v.cbegin(), it_end = v.cend(); it != it_end; it++) {
+    csum += it->z;
+  }
+  if (sum == 2021 && csum == 2021) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_rust_vec_shared_sort(rust::Vec<Shared> v) {
+  // Exercise requirements of RandomAccessIterator.
+  // https://en.cppreference.com/w/cpp/named_req/RandomAccessIterator
+  std::sort(v.begin(), v.end());
+  if (v[0].z == 0 && v[1].z == 2 && v[2].z == 4 && v[3].z == 7) {
     cxx_test_suite_set_correct();
   }
 }
@@ -278,6 +377,14 @@ void c_take_rust_vec_shared_forward_iterator(rust::Vec<Shared> v) {
 void c_take_rust_vec_shared_index(rust::Vec<Shared> v) {
   if (v[0].z == 1010 && v.at(0).z == 1010 && v.front().z == 1010 &&
       v[1].z == 1011 && v.at(1).z == 1011 && v.back().z == 1011) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_rust_vec_shared_push(rust::Vec<Shared> v) {
+  v.push_back(Shared{3});
+  v.emplace_back(Shared{2});
+  if (v[v.size() - 2].z == 3 && v.back().z == 2) {
     cxx_test_suite_set_correct();
   }
 }
@@ -313,15 +420,31 @@ void c_take_ref_rust_vec_copy(const rust::Vec<uint8_t> &v) {
   }
 }
 
-/*
-// https://github.com/dtolnay/cxx/issues/232
+const SharedString &c_take_ref_shared_string(const SharedString &s) {
+  if (std::string(s.msg) == "2020") {
+    cxx_test_suite_set_correct();
+  }
+  return s;
+}
+
 void c_take_callback(rust::Fn<size_t(rust::String)> callback) {
   callback("2020");
 }
-*/
 
 void c_take_enum(Enum e) {
   if (e == Enum::AVal) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_ns_enum(::A::AEnum e) {
+  if (e == ::A::AEnum::AAVal) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_nested_ns_enum(::A::B::ABEnum e) {
+  if (e == ::A::B::ABEnum::ABAVal) {
     cxx_test_suite_set_correct();
   }
 }
@@ -338,7 +461,13 @@ const rust::String &c_try_return_ref(const rust::String &s) { return s; }
 
 rust::Str c_try_return_str(rust::Str s) { return s; }
 
-rust::Slice<uint8_t> c_try_return_sliceu8(rust::Slice<uint8_t> s) { return s; }
+rust::Slice<const uint8_t> c_try_return_sliceu8(rust::Slice<const uint8_t> s) {
+  return s;
+}
+
+rust::Slice<uint8_t> c_try_return_mutsliceu8(rust::Slice<uint8_t> s) {
+  return s;
+}
 
 rust::String c_try_return_rust_string() { return c_return_rust_string(); }
 
@@ -361,6 +490,11 @@ const rust::Vec<uint8_t> &c_try_return_ref_rust_vec(const C &c) {
 
 extern "C" C *cxx_test_suite_get_unique_ptr() noexcept {
   return std::unique_ptr<C>(new C{2020}).release();
+}
+
+extern "C" void
+cxx_test_suite_get_shared_ptr(std::shared_ptr<C> *repr) noexcept {
+  new (repr) std::shared_ptr<C>(new C{2020});
 }
 
 extern "C" std::string *cxx_test_suite_get_unique_ptr_string() noexcept {
@@ -389,13 +523,32 @@ void c_take_trivial_ptr(std::unique_ptr<D> d) {
   }
 }
 
-void c_take_trivial_ref(const D& d) {
+void c_take_trivial_ref(const D &d) {
   if (d.d == 30) {
     cxx_test_suite_set_correct();
   }
 }
+
 void c_take_trivial(D d) {
   if (d.d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_trivial_ns_ptr(std::unique_ptr<::G::G> g) {
+  if (g->g == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_trivial_ns_ref(const ::G::G &g) {
+  if (g.g == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_trivial_ns(::G::G g) {
+  if (g.g == 30) {
     cxx_test_suite_set_correct();
   }
 }
@@ -406,8 +559,20 @@ void c_take_opaque_ptr(std::unique_ptr<E> e) {
   }
 }
 
-void c_take_opaque_ref(const E& e) {
+void c_take_opaque_ns_ptr(std::unique_ptr<::F::F> f) {
+  if (f->f == 40) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_opaque_ref(const E &e) {
   if (e.e == 40 && e.e_str == "hello") {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_opaque_ns_ref(const ::F::F &f) {
+  if (f.f == 40 && f.f_str == "hello") {
     cxx_test_suite_set_correct();
   }
 }
@@ -424,11 +589,30 @@ D c_return_trivial() {
   return d;
 }
 
+std::unique_ptr<::G::G> c_return_trivial_ns_ptr() {
+  auto g = std::unique_ptr<::G::G>(new ::G::G());
+  g->g = 30;
+  return g;
+}
+
+::G::G c_return_trivial_ns() {
+  ::G::G g;
+  g.g = 30;
+  return g;
+}
+
 std::unique_ptr<E> c_return_opaque_ptr() {
   auto e = std::unique_ptr<E>(new E());
   e->e = 40;
   e->e_str = std::string("hello");
   return e;
+}
+
+std::unique_ptr<::F::F> c_return_ns_opaque_ptr() {
+  auto f = std::unique_ptr<::F::F>(new ::F::F());
+  f->f = 40;
+  f->f_str = std::string("hello");
+  return f;
 }
 
 extern "C" const char *cxx_run_test() noexcept {
@@ -445,6 +629,7 @@ extern "C" const char *cxx_run_test() noexcept {
   ASSERT(r_return_shared().z == 2020);
   ASSERT(cxx_test_suite_r_is_correct(&*r_return_box()));
   ASSERT(r_return_unique_ptr()->get() == 2020);
+  ASSERT(r_return_shared_ptr()->get() == 2020);
   ASSERT(r_return_ref(Shared{2020}) == 2020);
   ASSERT(std::string(r_return_str(Shared{2020})) == "2020");
   ASSERT(std::string(r_return_rust_string()) == "2020");
@@ -458,10 +643,10 @@ extern "C" const char *cxx_run_test() noexcept {
   r_take_primitive(2020);
   r_take_shared(Shared{2020});
   r_take_unique_ptr(std::unique_ptr<C>(new C{2020}));
+  r_take_shared_ptr(std::shared_ptr<C>(new C{2020}));
   r_take_ref_c(C{2020});
   r_take_str(rust::Str("2020"));
-  r_take_sliceu8(rust::Slice<uint8_t>(
-      reinterpret_cast<const uint8_t *>(SLICE_DATA), sizeof(SLICE_DATA)));
+  r_take_slice_char(rust::Slice<const char>(SLICE_DATA, sizeof(SLICE_DATA)));
   r_take_rust_string(rust::String("2020"));
   r_take_unique_ptr_string(
       std::unique_ptr<std::string>(new std::string("2020")));
@@ -480,17 +665,68 @@ extern "C" const char *cxx_run_test() noexcept {
     ASSERT(std::strcmp(e.what(), "rust error") == 0);
   }
 
-  auto r2 = r_return_r2(2020);
-  ASSERT(r2->get() == 2020);
-  ASSERT(r2->set(2021) == 2021);
-  ASSERT(r2->get() == 2021);
-  ASSERT(r2->set(2020) == 2020);
-  ASSERT(r2->get() == 2020);
+  auto r = r_return_box();
+  ASSERT(r->get() == 2020);
+  ASSERT(r->set(2021) == 2021);
+  ASSERT(r->get() == 2021);
+  ASSERT(r->set(2020) == 2020);
+  ASSERT(r->get() == 2020);
+  ASSERT(std::string(Shared{0}.r_method_on_shared()) == "2020");
 
   ASSERT(std::string(rAliasedFunction(2020)) == "2020");
+
+  ASSERT(Shared{1} == Shared{1});
+  ASSERT(Shared{1} != Shared{2});
+
+  rust::String first = "first", second = "second", sec = "sec";
+  bool (rust::String::*cmp)(const rust::String &) const;
+  bool first_first, first_second, sec_second, second_sec;
+  for (auto test : {
+    std::tuple<decltype(cmp), bool, bool, bool, bool>
+    {&rust::String::operator==, true, false, false, false},
+    {&rust::String::operator!=, false, true, true, true},
+    {&rust::String::operator<, false, true, true, false},
+    {&rust::String::operator<=, true, true, true, false},
+    {&rust::String::operator>, false, false, false, true},
+    {&rust::String::operator>=, true, false, false, true},
+  }) {
+    std::tie(cmp, first_first, first_second, sec_second, second_sec) = test;
+    ASSERT((first.*cmp)(first) == first_first);
+    ASSERT((first.*cmp)(second) == first_second);
+    ASSERT((sec.*cmp)(second) == sec_second);
+    ASSERT((second.*cmp)(sec) == second_sec);
+  }
 
   cxx_test_suite_set_correct();
   return nullptr;
 }
 
 } // namespace tests
+
+namespace other {
+void ns_c_take_trivial(::tests::D d) {
+  if (d.d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+::tests::D ns_c_return_trivial() {
+  ::tests::D d;
+  d.d = 30;
+  return d;
+}
+
+void ns_c_take_ns_shared(::A::AShared shared) {
+  if (shared.z == 2020) {
+    cxx_test_suite_set_correct();
+  }
+}
+} // namespace other
+
+namespace I {
+uint32_t I::get() const { return a; }
+
+std::unique_ptr<I> ns_c_return_unique_ptr_ns() {
+  return std::unique_ptr<I>(new I());
+}
+} // namespace I
