@@ -1,11 +1,11 @@
+use crate::cxx_string::CxxString;
 use crate::kind::Trivial;
 use crate::ExternType;
 use core::ffi::c_void;
 use core::fmt::{self, Debug, Display};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
-use core::ops::{Deref, DerefMut};
-use core::pin::Pin;
+use core::ops::Deref;
 
 /// BInding to C++ `std::shared_ptr<T>`.
 #[repr(C)]
@@ -61,29 +61,6 @@ where
         let this = self as *const Self as *const c_void;
         unsafe { T::__get(this).as_ref() }
     }
-
-    /// Returns a mutable pinned reference to the object owned by this SharedPtr
-    /// if any, otherwise None.
-    pub fn as_mut(&mut self) -> Option<Pin<&mut T>> {
-        let this = self as *mut Self as *mut c_void;
-        unsafe {
-            let mut_reference = (T::__get(this) as *mut T).as_mut()?;
-            Some(Pin::new_unchecked(mut_reference))
-        }
-    }
-
-    /// Returns a mutable pinned reference to the object owned by this
-    /// SharedPtr.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the SharedPtr holds a null pointer.
-    pub fn pin_mut(&mut self) -> Pin<&mut T> {
-        match self.as_mut() {
-            Some(target) => target,
-            None => panic!("called pin_mut on a null SharedPtr<{}>", T::__NAME),
-        }
-    }
 }
 
 unsafe impl<T> Send for SharedPtr<T> where T: Send + Sync + SharedPtrTarget {}
@@ -124,18 +101,6 @@ where
         match self.as_ref() {
             Some(target) => target,
             None => panic!("called deref on a null SharedPtr<{}>", T::__NAME),
-        }
-    }
-}
-
-impl<T> DerefMut for SharedPtr<T>
-where
-    T: SharedPtrTarget + Unpin,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self.as_mut() {
-            Some(target) => Pin::into_inner(target),
-            None => panic!("called deref_mut on a null SharedPtr<{}>", T::__NAME),
         }
     }
 }
@@ -189,3 +154,77 @@ pub unsafe trait SharedPtrTarget {
     #[doc(hidden)]
     unsafe fn __drop(this: *mut c_void);
 }
+
+macro_rules! impl_shared_ptr_target {
+    ($segment:expr, $name:expr, $ty:ty) => {
+        unsafe impl SharedPtrTarget for $ty {
+            const __NAME: &'static dyn Display = &$name;
+            unsafe fn __null(new: *mut c_void) {
+                extern "C" {
+                    attr! {
+                        #[link_name = concat!("cxxbridge1$std$shared_ptr$", $segment, "$null")]
+                        fn __null(new: *mut c_void);
+                    }
+                }
+                __null(new);
+            }
+            unsafe fn __new(value: Self, new: *mut c_void) {
+                extern "C" {
+                    attr! {
+                        #[link_name = concat!("cxxbridge1$std$shared_ptr$", $segment, "$uninit")]
+                        fn __uninit(new: *mut c_void) -> *mut c_void;
+                    }
+                }
+                __uninit(new).cast::<$ty>().write(value);
+            }
+            unsafe fn __clone(this: *const c_void, new: *mut c_void) {
+                extern "C" {
+                    attr! {
+                        #[link_name = concat!("cxxbridge1$std$shared_ptr$", $segment, "$clone")]
+                        fn __clone(this: *const c_void, new: *mut c_void);
+                    }
+                }
+                __clone(this, new);
+            }
+            unsafe fn __get(this: *const c_void) -> *const Self {
+                extern "C" {
+                    attr! {
+                        #[link_name = concat!("cxxbridge1$std$shared_ptr$", $segment, "$get")]
+                        fn __get(this: *const c_void) -> *const c_void;
+                    }
+                }
+                __get(this).cast()
+            }
+            unsafe fn __drop(this: *mut c_void) {
+                extern "C" {
+                    attr! {
+                        #[link_name = concat!("cxxbridge1$std$shared_ptr$", $segment, "$drop")]
+                        fn __drop(this: *mut c_void);
+                    }
+                }
+                __drop(this);
+            }
+        }
+    };
+}
+
+macro_rules! impl_shared_ptr_target_for_primitive {
+    ($ty:ident) => {
+        impl_shared_ptr_target!(stringify!($ty), stringify!($ty), $ty);
+    };
+}
+
+impl_shared_ptr_target_for_primitive!(u8);
+impl_shared_ptr_target_for_primitive!(u16);
+impl_shared_ptr_target_for_primitive!(u32);
+impl_shared_ptr_target_for_primitive!(u64);
+impl_shared_ptr_target_for_primitive!(usize);
+impl_shared_ptr_target_for_primitive!(i8);
+impl_shared_ptr_target_for_primitive!(i16);
+impl_shared_ptr_target_for_primitive!(i32);
+impl_shared_ptr_target_for_primitive!(i64);
+impl_shared_ptr_target_for_primitive!(isize);
+impl_shared_ptr_target_for_primitive!(f32);
+impl_shared_ptr_target_for_primitive!(f64);
+
+impl_shared_ptr_target!("string", "CxxString", CxxString);

@@ -158,6 +158,8 @@ fn write_std_specializations(out: &mut OutFile, apis: &[Api]) {
         if let Api::Struct(strct) = api {
             if derive::contains(&strct.derives, Trait::Hash) {
                 out.next_section();
+                out.include.cstddef = true;
+                out.include.functional = true;
                 let qualified = strct.name.to_fully_qualified();
                 writeln!(out, "template <> struct hash<{}> {{", qualified);
                 writeln!(
@@ -231,9 +233,7 @@ fn write_struct<'a>(out: &mut OutFile<'a>, strct: &'a Struct, methods: &[&Extern
         writeln!(out, "{};", field.ident);
     }
 
-    if !methods.is_empty() || operator_eq || operator_ord {
-        writeln!(out);
-    }
+    writeln!(out);
 
     for method in methods {
         write!(out, "  ");
@@ -278,6 +278,9 @@ fn write_struct<'a>(out: &mut OutFile<'a>, strct: &'a Struct, methods: &[&Extern
             strct.name.cxx,
         );
     }
+
+    out.include.type_traits = true;
+    writeln!(out, "  using IsRelocatable = ::std::true_type;");
 
     writeln!(out, "}};");
     writeln!(out, "#endif // {}", guard);
@@ -466,6 +469,7 @@ fn write_struct_operator_decls<'a>(out: &mut OutFile<'a>, strct: &'a Struct) {
     }
 
     if derive::contains(&strct.derives, Trait::Hash) {
+        out.include.cstddef = true;
         let link_name = mangle::operator(&strct.name, "hash");
         writeln!(
             out,
@@ -1359,6 +1363,8 @@ fn write_rust_vec_extern(out: &mut OutFile, element: &RustName) {
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 
+    out.include.cstddef = true;
+
     writeln!(out, "#ifndef CXXBRIDGE1_RUST_VEC_{}", instance);
     writeln!(out, "#define CXXBRIDGE1_RUST_VEC_{}", instance);
     writeln!(
@@ -1374,6 +1380,11 @@ fn write_rust_vec_extern(out: &mut OutFile, element: &RustName) {
     writeln!(
         out,
         "size_t cxxbridge1$rust_vec${}$len(const ::rust::Vec<{}> *ptr) noexcept;",
+        instance, inner,
+    );
+    writeln!(
+        out,
+        "size_t cxxbridge1$rust_vec${}$capacity(const ::rust::Vec<{}> *ptr) noexcept;",
         instance, inner,
     );
     writeln!(
@@ -1418,6 +1429,8 @@ fn write_rust_vec_impl(out: &mut OutFile, element: &RustName) {
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 
+    out.include.cstddef = true;
+
     writeln!(out, "template <>");
     writeln!(out, "Vec<{}>::Vec() noexcept {{", inner);
     writeln!(out, "  cxxbridge1$rust_vec${}$new(this);", instance);
@@ -1431,6 +1444,15 @@ fn write_rust_vec_impl(out: &mut OutFile, element: &RustName) {
     writeln!(out, "template <>");
     writeln!(out, "size_t Vec<{}>::size() const noexcept {{", inner);
     writeln!(out, "  return cxxbridge1$rust_vec${}$len(this);", instance);
+    writeln!(out, "}}");
+
+    writeln!(out, "template <>");
+    writeln!(out, "size_t Vec<{}>::capacity() const noexcept {{", inner);
+    writeln!(
+        out,
+        "  return cxxbridge1$rust_vec${}$capacity(this);",
+        instance,
+    );
     writeln!(out, "}}");
 
     writeln!(out, "template <>");
@@ -1533,7 +1555,7 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
         "void cxxbridge1$unique_ptr${}$null(::std::unique_ptr<{}> *ptr) noexcept {{",
         instance, inner,
     );
-    writeln!(out, "  new (ptr) ::std::unique_ptr<{}>();", inner);
+    writeln!(out, "  ::new (ptr) ::std::unique_ptr<{}>();", inner);
     writeln!(out, "}}");
     if can_construct_from_value {
         out.builtin.maybe_uninit = true;
@@ -1547,7 +1569,7 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
             "  {} *uninit = reinterpret_cast<{} *>(new ::rust::MaybeUninit<{}>);",
             inner, inner, inner,
         );
-        writeln!(out, "  new (ptr) ::std::unique_ptr<{}>(uninit);", inner);
+        writeln!(out, "  ::new (ptr) ::std::unique_ptr<{}>(uninit);", inner);
         writeln!(out, "  return uninit;");
         writeln!(out, "}}");
     }
@@ -1556,7 +1578,7 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
         "void cxxbridge1$unique_ptr${}$raw(::std::unique_ptr<{}> *ptr, {} *raw) noexcept {{",
         instance, inner, inner,
     );
-    writeln!(out, "  new (ptr) ::std::unique_ptr<{}>(raw);", inner);
+    writeln!(out, "  ::new (ptr) ::std::unique_ptr<{}>(raw);", inner);
     writeln!(out, "}}");
     writeln!(
         out,
@@ -1623,7 +1645,7 @@ fn write_shared_ptr(out: &mut OutFile, ident: &RustName) {
         "void cxxbridge1$shared_ptr${}$null(::std::shared_ptr<{}> *ptr) noexcept {{",
         instance, inner,
     );
-    writeln!(out, "  new (ptr) ::std::shared_ptr<{}>();", inner);
+    writeln!(out, "  ::new (ptr) ::std::shared_ptr<{}>();", inner);
     writeln!(out, "}}");
     if can_construct_from_value {
         out.builtin.maybe_uninit = true;
@@ -1637,7 +1659,7 @@ fn write_shared_ptr(out: &mut OutFile, ident: &RustName) {
             "  {} *uninit = reinterpret_cast<{} *>(new ::rust::MaybeUninit<{}>);",
             inner, inner, inner,
         );
-        writeln!(out, "  new (ptr) ::std::shared_ptr<{}>(uninit);", inner);
+        writeln!(out, "  ::new (ptr) ::std::shared_ptr<{}>(uninit);", inner);
         writeln!(out, "  return uninit;");
         writeln!(out, "}}");
     }
@@ -1646,7 +1668,7 @@ fn write_shared_ptr(out: &mut OutFile, ident: &RustName) {
         "void cxxbridge1$shared_ptr${}$clone(const ::std::shared_ptr<{}>& self, ::std::shared_ptr<{}> *ptr) noexcept {{",
         instance, inner, inner,
     );
-    writeln!(out, "  new (ptr) ::std::shared_ptr<{}>(self);", inner);
+    writeln!(out, "  ::new (ptr) ::std::shared_ptr<{}>(self);", inner);
     writeln!(out, "}}");
     writeln!(
         out,
@@ -1670,6 +1692,8 @@ fn write_cxx_vector(out: &mut OutFile, element: &RustName) {
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 
+    out.include.cstddef = true;
+
     writeln!(out, "#ifndef CXXBRIDGE1_VECTOR_{}", instance);
     writeln!(out, "#define CXXBRIDGE1_VECTOR_{}", instance);
     writeln!(
@@ -1687,6 +1711,7 @@ fn write_cxx_vector(out: &mut OutFile, element: &RustName) {
     writeln!(out, "  return &s[pos];");
     writeln!(out, "}}");
 
+    out.include.memory = true;
     write_unique_ptr_common(out, UniquePtr::CxxVector(element));
 
     writeln!(out, "#endif // CXXBRIDGE1_VECTOR_{}", instance);

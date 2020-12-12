@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.12")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.16")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -448,7 +448,7 @@ pub mod private {
     pub use crate::rust_slice::RustSlice;
     pub use crate::rust_str::RustStr;
     pub use crate::rust_string::RustString;
-    pub use crate::rust_type::RustType;
+    pub use crate::rust_type::{ImplBox, ImplVec, RustType};
     pub use crate::rust_vec::RustVec;
     pub use crate::shared_ptr::SharedPtrTarget;
     pub use crate::unique_ptr::UniquePtrTarget;

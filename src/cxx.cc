@@ -331,6 +331,15 @@ Error &Error::operator=(Error &&other) noexcept {
 
 const char *Error::what() const noexcept { return this->msg; }
 
+namespace {
+template <typename T>
+union MaybeUninit {
+  T value;
+  MaybeUninit() {}
+  ~MaybeUninit() {}
+};
+} // namespace
+
 } // namespace cxxbridge1
 } // namespace rust
 
@@ -405,6 +414,8 @@ static_assert(sizeof(std::string) <= kMaxExpectedWordsInString * sizeof(void *),
       rust::Vec<CXX_TYPE> *ptr) noexcept;                                      \
   size_t cxxbridge1$rust_vec$##RUST_TYPE##$len(                                \
       const rust::Vec<CXX_TYPE> *ptr) noexcept;                                \
+  size_t cxxbridge1$rust_vec$##RUST_TYPE##$capacity(                           \
+      const rust::Vec<CXX_TYPE> *ptr) noexcept;                                \
   const CXX_TYPE *cxxbridge1$rust_vec$##RUST_TYPE##$data(                      \
       const rust::Vec<CXX_TYPE> *ptr) noexcept;                                \
   void cxxbridge1$rust_vec$##RUST_TYPE##$reserve_total(                        \
@@ -427,6 +438,10 @@ static_assert(sizeof(std::string) <= kMaxExpectedWordsInString * sizeof(void *),
     return cxxbridge1$rust_vec$##RUST_TYPE##$len(this);                        \
   }                                                                            \
   template <>                                                                  \
+  size_t Vec<CXX_TYPE>::capacity() const noexcept {                            \
+    return cxxbridge1$rust_vec$##RUST_TYPE##$capacity(this);                   \
+  }                                                                            \
+  template <>                                                                  \
   const CXX_TYPE *Vec<CXX_TYPE>::data() const noexcept {                       \
     return cxxbridge1$rust_vec$##RUST_TYPE##$data(this);                       \
   }                                                                            \
@@ -441,6 +456,34 @@ static_assert(sizeof(std::string) <= kMaxExpectedWordsInString * sizeof(void *),
   template <>                                                                  \
   size_t Vec<CXX_TYPE>::stride() noexcept {                                    \
     return cxxbridge1$rust_vec$##RUST_TYPE##$stride();                         \
+  }
+
+#define SHARED_PTR_OPS(RUST_TYPE, CXX_TYPE)                                    \
+  static_assert(sizeof(std::shared_ptr<CXX_TYPE>) == 2 * sizeof(void *), "");  \
+  static_assert(alignof(std::shared_ptr<CXX_TYPE>) == alignof(void *), "");    \
+  void cxxbridge1$std$shared_ptr$##RUST_TYPE##$null(                           \
+      std::shared_ptr<CXX_TYPE> *ptr) noexcept {                               \
+    new (ptr) std::shared_ptr<CXX_TYPE>();                                     \
+  }                                                                            \
+  CXX_TYPE *cxxbridge1$std$shared_ptr$##RUST_TYPE##$uninit(                    \
+      std::shared_ptr<CXX_TYPE> *ptr) noexcept {                               \
+    CXX_TYPE *uninit =                                                         \
+        reinterpret_cast<CXX_TYPE *>(new rust::MaybeUninit<CXX_TYPE>);         \
+    new (ptr) std::shared_ptr<CXX_TYPE>(uninit);                               \
+    return uninit;                                                             \
+  }                                                                            \
+  void cxxbridge1$std$shared_ptr$##RUST_TYPE##$clone(                          \
+      const std::shared_ptr<CXX_TYPE> &self,                                   \
+      std::shared_ptr<CXX_TYPE> *ptr) noexcept {                               \
+    new (ptr) std::shared_ptr<CXX_TYPE>(self);                                 \
+  }                                                                            \
+  const CXX_TYPE *cxxbridge1$std$shared_ptr$##RUST_TYPE##$get(                 \
+      const std::shared_ptr<CXX_TYPE> &self) noexcept {                        \
+    return self.get();                                                         \
+  }                                                                            \
+  void cxxbridge1$std$shared_ptr$##RUST_TYPE##$drop(                           \
+      const std::shared_ptr<CXX_TYPE> *self) noexcept {                        \
+    self->~shared_ptr();                                                       \
   }
 
 // Usize and isize are the same type as one of the below.
@@ -468,9 +511,16 @@ static_assert(sizeof(std::string) <= kMaxExpectedWordsInString * sizeof(void *),
   MACRO(char, char)                                                            \
   MACRO(string, rust::String)
 
+#define FOR_EACH_SHARED_PTR(MACRO)                                             \
+  FOR_EACH_NUMERIC(MACRO)                                                      \
+  MACRO(usize, size_t)                                                         \
+  MACRO(isize, rust::isize)                                                    \
+  MACRO(string, std::string)
+
 extern "C" {
 FOR_EACH_STD_VECTOR(STD_VECTOR_OPS)
 FOR_EACH_RUST_VEC(RUST_VEC_EXTERNS)
+FOR_EACH_SHARED_PTR(SHARED_PTR_OPS)
 } // extern "C"
 
 namespace rust {

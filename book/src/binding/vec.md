@@ -19,15 +19,18 @@ public:
 
   Vec() noexcept;
   Vec(std::initializer_list<T>);
+  Vec(const Vec &);
   Vec(Vec &&) noexcept;
   ~Vec() noexcept;
 
   Vec &operator=(Vec &&) noexcept;
+  Vec &operator=(const Vec &);
 
   size_t size() const noexcept;
   bool empty() const noexcept;
   const T *data() const noexcept;
   T *data() noexcept;
+  size_t capacity() const noexcept;
 
   const T &operator[](size_t n) const noexcept;
   const T &at(size_t n) const;
