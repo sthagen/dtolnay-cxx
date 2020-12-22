@@ -1,8 +1,9 @@
 use crate::syntax::improper::ImproperCtype;
 use crate::syntax::report::Errors;
 use crate::syntax::set::{OrderedSet as Set, UnorderedSet};
+use crate::syntax::trivial::{self, TrivialReason};
 use crate::syntax::{
-    toposort, Api, Enum, ExternFn, ExternType, Impl, Pair, RustName, Struct, Type, TypeAlias,
+    toposort, Api, Enum, ExternType, Impl, Pair, RustName, Struct, Type, TypeAlias,
 };
 use proc_macro2::Ident;
 use quote::ToTokens;
@@ -16,7 +17,7 @@ pub struct Types<'a> {
     pub rust: Set<&'a Ident>,
     pub aliases: Map<&'a Ident, &'a TypeAlias>,
     pub untrusted: Map<&'a Ident, &'a ExternType>,
-    pub required_trivial: Map<&'a Ident, TrivialReason<'a>>,
+    pub required_trivial: Map<&'a Ident, Vec<TrivialReason<'a>>>,
     pub explicit_impls: Set<&'a Impl>,
     pub resolutions: Map<&'a RustName, &'a Pair>,
     pub struct_improper_ctypes: UnorderedSet<&'a Ident>,
@@ -167,51 +168,8 @@ impl<'a> Types<'a> {
         // we check that this is permissible. We do this _after_ scanning all
         // the APIs above, in case some function or struct references a type
         // which is declared subsequently.
-        let mut required_trivial = Map::new();
-        let mut insist_alias_types_are_trivial = |ty: &'a Type, reason| {
-            if let Type::Ident(ident) = ty {
-                if cxx.contains(&ident.rust)
-                    && !structs.contains_key(&ident.rust)
-                    && !enums.contains_key(&ident.rust)
-                {
-                    required_trivial.entry(&ident.rust).or_insert(reason);
-                }
-            }
-        };
-        for api in apis {
-            match api {
-                Api::Struct(strct) => {
-                    let reason = TrivialReason::StructField(strct);
-                    for field in &strct.fields {
-                        insist_alias_types_are_trivial(&field.ty, reason);
-                    }
-                }
-                Api::CxxFunction(efn) | Api::RustFunction(efn) => {
-                    let reason = TrivialReason::FunctionArgument(efn);
-                    for arg in &efn.args {
-                        insist_alias_types_are_trivial(&arg.ty, reason);
-                    }
-                    if let Some(ret) = &efn.ret {
-                        let reason = TrivialReason::FunctionReturn(efn);
-                        insist_alias_types_are_trivial(&ret, reason);
-                    }
-                }
-                _ => {}
-            }
-        }
-        for ty in &all {
-            match ty {
-                Type::RustBox(ty) => {
-                    let reason = TrivialReason::BoxTarget;
-                    insist_alias_types_are_trivial(&ty.inner, reason);
-                }
-                Type::RustVec(ty) => {
-                    let reason = TrivialReason::VecElement;
-                    insist_alias_types_are_trivial(&ty.inner, reason);
-                }
-                _ => {}
-            }
-        }
+        let required_trivial =
+            trivial::required_trivial_reasons(apis, &all, &structs, &enums, &cxx);
 
         let mut types = Types {
             all,
@@ -289,15 +247,6 @@ impl<'t, 'a> IntoIterator for &'t Types<'a> {
     fn into_iter(self) -> Self::IntoIter {
         self.all.into_iter()
     }
-}
-
-#[derive(Copy, Clone)]
-pub enum TrivialReason<'a> {
-    StructField(&'a Struct),
-    FunctionArgument(&'a ExternFn),
-    FunctionReturn(&'a ExternFn),
-    BoxTarget,
-    VecElement,
 }
 
 fn duplicate_name(cx: &mut Errors, sp: impl ToTokens, ident: &Ident) {

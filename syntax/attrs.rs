@@ -6,14 +6,37 @@ use proc_macro2::Ident;
 use syn::parse::{ParseStream, Parser as _};
 use syn::{Attribute, Error, LitStr, Path, Result, Token};
 
+// Intended usage:
+//
+//     let mut doc = Doc::new();
+//     let mut cxx_name = None;
+//     let mut rust_name = None;
+//     /* ... */
+//     attrs::parse(
+//         cx,
+//         &item.attrs,
+//         attrs::Parser {
+//             doc: Some(&mut doc),
+//             cxx_name: Some(&mut cxx_name),
+//             rust_name: Some(&mut rust_name),
+//             /* ... */
+//             ..Default::default()
+//         },
+//     );
+//
 #[derive(Default)]
 pub struct Parser<'a> {
     pub doc: Option<&'a mut Doc>,
     pub derives: Option<&'a mut Vec<Derive>>,
     pub repr: Option<&'a mut Option<Atom>>,
+    pub namespace: Option<&'a mut Namespace>,
     pub cxx_name: Option<&'a mut Option<Ident>>,
     pub rust_name: Option<&'a mut Option<Ident>>,
-    pub namespace: Option<&'a mut Namespace>,
+
+    // Suppress clippy needless_update lint ("struct update has no effect, all
+    // the fields in the struct have already been specified") when preemptively
+    // writing `..Default::default()`.
+    pub(crate) _more: (),
 }
 
 pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
@@ -48,6 +71,16 @@ pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
                 }
                 Err(err) => return cx.push(err),
             }
+        } else if attr.path.is_ident("namespace") {
+            match parse_namespace_attribute.parse2(attr.tokens.clone()) {
+                Ok(attr) => {
+                    if let Some(namespace) = &mut parser.namespace {
+                        **namespace = attr;
+                        continue;
+                    }
+                }
+                Err(err) => return cx.push(err),
+            }
         } else if attr.path.is_ident("cxx_name") {
             match parse_function_alias_attribute.parse2(attr.tokens.clone()) {
                 Ok(attr) => {
@@ -63,16 +96,6 @@ pub(super) fn parse(cx: &mut Errors, attrs: &[Attribute], mut parser: Parser) {
                 Ok(attr) => {
                     if let Some(rust_name) = &mut parser.rust_name {
                         **rust_name = Some(attr);
-                        continue;
-                    }
-                }
-                Err(err) => return cx.push(err),
-            }
-        } else if attr.path.is_ident("namespace") {
-            match parse_namespace_attribute.parse2(attr.tokens.clone()) {
-                Ok(attr) => {
-                    if let Some(namespace) = &mut parser.namespace {
-                        **namespace = attr;
                         continue;
                     }
                 }
@@ -122,6 +145,12 @@ fn parse_repr_attribute(input: ParseStream) -> Result<Atom> {
     ))
 }
 
+fn parse_namespace_attribute(input: ParseStream) -> Result<Namespace> {
+    input.parse::<Token![=]>()?;
+    let namespace = input.parse::<Namespace>()?;
+    Ok(namespace)
+}
+
 fn parse_function_alias_attribute(input: ParseStream) -> Result<Ident> {
     input.parse::<Token![=]>()?;
     if input.peek(LitStr) {
@@ -130,10 +159,4 @@ fn parse_function_alias_attribute(input: ParseStream) -> Result<Ident> {
     } else {
         input.parse()
     }
-}
-
-fn parse_namespace_attribute(input: ParseStream) -> Result<Namespace> {
-    input.parse::<Token![=]>()?;
-    let namespace = input.parse::<Namespace>()?;
-    Ok(namespace)
 }

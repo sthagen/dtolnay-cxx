@@ -125,12 +125,17 @@ mod tests {
 
     fn make_api(ns: Option<&str>, ident: &str) -> Api {
         let ns = ns.map_or(Namespace::ROOT, |ns| syn::parse_str(ns).unwrap());
+        let ident = Ident::new(ident, Span::call_site());
         Api::CxxType(ExternType {
             lang: Lang::Rust,
             doc: Doc::new(),
             derives: Vec::new(),
             type_token: Token![type](Span::call_site()),
-            name: Pair::new(ns, Ident::new(ident, Span::call_site())),
+            name: Pair {
+                namespace: ns,
+                cxx: ident.clone(),
+                rust: ident,
+            },
             colon_token: None,
             bounds: Vec::new(),
             semi_token: Token![;](Span::call_site()),

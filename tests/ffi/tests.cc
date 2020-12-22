@@ -22,6 +22,10 @@ size_t C::get() const { return this->n; }
 
 size_t C::get2() const { return this->n; }
 
+const size_t &C::getRef() const { return this->n; }
+
+size_t &C::getMut() { return this->n; }
+
 size_t C::set(size_t n) {
   this->n = n;
   return this->n;
@@ -32,6 +36,12 @@ size_t C::set_succeed(size_t n) { return this->set(n); }
 size_t C::get_fail() { throw std::runtime_error("unimplemented"); }
 
 size_t Shared::c_method_on_shared() const noexcept { return 2021; }
+
+const size_t &Shared::c_method_ref_on_shared() const noexcept {
+  return this->z;
+}
+
+size_t &Shared::c_method_mut_on_shared() noexcept { return this->z; }
 
 void Array::c_set_array(int32_t val) noexcept {
   this->a = {val, val, val, val};
@@ -50,6 +60,15 @@ Shared c_return_shared() { return Shared{2020}; }
 ::A::B::ABShared c_return_nested_ns_shared() { return ::A::B::ABShared{2020}; }
 
 rust::Box<R> c_return_box() {
+  Shared shared{0};
+  rust::Box<Shared> box{shared}; // explicit constructor from const T&
+  rust::Box<Shared> other{std::move(shared)}; // explicit constructor from T&&
+  box = other;                                // copy assignment
+  box = std::move(other);                     // move assignment
+  rust::Box<Shared> box2(box);                // copy constructor
+  rust::Box<Shared> other2(std::move(other)); // move constructor
+  rust::Box<Shared>::in_place(shared.z);      // placement static factory
+  rust::Box<Shared>::in_place<size_t>(0);
   return rust::Box<R>::from_raw(cxx_test_suite_get_box());
 }
 
@@ -529,6 +548,18 @@ void c_take_trivial_ref(const D &d) {
   }
 }
 
+void D::c_take_trivial_ref_method() const {
+  if (d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void D::c_take_trivial_mut_ref_method() {
+  if (d == 30) {
+    cxx_test_suite_set_correct();
+  }
+}
+
 void c_take_trivial(D d) {
   if (d.d == 30) {
     cxx_test_suite_set_correct();
@@ -567,6 +598,18 @@ void c_take_opaque_ns_ptr(std::unique_ptr<::F::F> f) {
 
 void c_take_opaque_ref(const E &e) {
   if (e.e == 40 && e.e_str == "hello") {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void E::c_take_opaque_ref_method() const {
+  if (e == 40 && e_str == "hello") {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void E::c_take_opaque_mut_ref_method() {
+  if (e == 40 && e_str == "hello") {
     cxx_test_suite_set_correct();
   }
 }
@@ -696,6 +739,12 @@ extern "C" const char *cxx_run_test() noexcept {
     ASSERT((sec.*cmp)(second) == sec_second);
     ASSERT((second.*cmp)(sec) == second_sec);
   }
+
+  rust::String cstring = "test";
+  ASSERT(cstring.length() == 4);
+  ASSERT(strncmp(cstring.data(), "test", 4) == 0);
+  ASSERT(strncmp(cstring.c_str(), "test", 5) == 0);
+  ASSERT(cstring.length() == 4);
 
   cxx_test_suite_set_correct();
   return nullptr;

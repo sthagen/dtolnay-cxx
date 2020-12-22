@@ -16,6 +16,7 @@ use syn::{
     GenericArgument, GenericParam, Generics, Ident, ItemEnum, ItemImpl, ItemStruct, Lit, LitStr,
     Pat, PathArguments, Result, ReturnType, Token, TraitBound, TraitBoundModifier,
     Type as RustType, TypeArray, TypeBareFn, TypeParamBound, TypePath, TypeReference,
+    Variant as RustVariant,
 };
 
 pub mod kw {
@@ -55,6 +56,24 @@ pub fn parse_items(
 }
 
 fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Result<Api> {
+    let mut doc = Doc::new();
+    let mut derives = Vec::new();
+    let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
+    attrs::parse(
+        cx,
+        &item.attrs,
+        attrs::Parser {
+            doc: Some(&mut doc),
+            derives: Some(&mut derives),
+            namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
+            ..Default::default()
+        },
+    );
+
     let generics = &item.generics;
     if !generics.params.is_empty() || generics.where_clause.is_some() {
         let struct_token = item.struct_token;
@@ -66,20 +85,6 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Res
             "struct with generic parameters is not supported yet",
         ));
     }
-
-    let mut doc = Doc::new();
-    let mut derives = Vec::new();
-    let mut namespace = namespace.clone();
-    attrs::parse(
-        cx,
-        &item.attrs,
-        attrs::Parser {
-            doc: Some(&mut doc),
-            derives: Some(&mut derives),
-            namespace: Some(&mut namespace),
-            ..Default::default()
-        },
-    );
 
     let named_fields = match item.fields {
         Fields::Named(fields) => fields,
@@ -102,17 +107,41 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Res
         fields.push(Var { ident, ty });
     }
 
+    let struct_token = item.struct_token;
+    let name = pair(namespace, &item.ident, cxx_name, rust_name);
+    let brace_token = named_fields.brace_token;
+
     Ok(Api::Struct(Struct {
         doc,
         derives,
-        struct_token: item.struct_token,
-        name: Pair::new(namespace, item.ident),
-        brace_token: named_fields.brace_token,
+        struct_token,
+        name,
+        brace_token,
         fields,
     }))
 }
 
 fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<Api> {
+    let mut doc = Doc::new();
+    let mut derives = Vec::new();
+    let mut repr = None;
+    let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
+    attrs::parse(
+        cx,
+        &item.attrs,
+        attrs::Parser {
+            doc: Some(&mut doc),
+            derives: Some(&mut derives),
+            repr: Some(&mut repr),
+            namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
+            ..Default::default()
+        },
+    );
+
     let generics = &item.generics;
     if !generics.params.is_empty() || generics.where_clause.is_some() {
         let enum_token = item.enum_token;
@@ -125,50 +154,13 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
         ));
     }
 
-    let mut doc = Doc::new();
-    let mut derives = Vec::new();
-    let mut repr = None;
-    let mut namespace = namespace.clone();
-    attrs::parse(
-        cx,
-        &item.attrs,
-        attrs::Parser {
-            doc: Some(&mut doc),
-            derives: Some(&mut derives),
-            repr: Some(&mut repr),
-            namespace: Some(&mut namespace),
-            ..Default::default()
-        },
-    );
-
     let mut variants = Vec::new();
     let mut discriminants = DiscriminantSet::new(repr);
     for variant in item.variants {
-        match variant.fields {
-            Fields::Unit => {}
-            _ => {
-                cx.error(variant, "enums with data are not supported yet");
-                break;
-            }
+        match parse_variant(cx, variant, &mut discriminants) {
+            Ok(variant) => variants.push(variant),
+            Err(err) => cx.push(err),
         }
-        let expr = variant.discriminant.as_ref().map(|(_, expr)| expr);
-        let try_discriminant = match &expr {
-            Some(lit) => discriminants.insert(lit),
-            None => discriminants.insert_next(),
-        };
-        let discriminant = match try_discriminant {
-            Ok(discriminant) => discriminant,
-            Err(err) => {
-                cx.error(variant, err);
-                break;
-            }
-        };
-        let expr = variant.discriminant.map(|(_, expr)| expr);
-        variants.push(Variant {
-            ident: variant.ident,
-            discriminant,
-            expr,
-        });
     }
 
     let enum_token = item.enum_token;
@@ -185,20 +177,66 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
         }
     }
 
-    let ident = Ident::new(repr.as_ref(), Span::call_site());
-    let repr_type = Type::Ident(RustName::new(ident));
+    let name = pair(namespace, &item.ident, cxx_name, rust_name);
+    let repr_ident = Ident::new(repr.as_ref(), Span::call_site());
+    let repr_type = Type::Ident(RustName::new(repr_ident));
 
     Ok(Api::Enum(Enum {
         doc,
         derives,
         enum_token,
-        name: Pair::new(namespace, item.ident),
+        name,
         brace_token,
         variants,
         repr,
         repr_type,
         explicit_repr,
     }))
+}
+
+fn parse_variant(
+    cx: &mut Errors,
+    variant: RustVariant,
+    discriminants: &mut DiscriminantSet,
+) -> Result<Variant> {
+    let mut cxx_name = None;
+    let mut rust_name = None;
+    attrs::parse(
+        cx,
+        &variant.attrs,
+        attrs::Parser {
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
+            ..Default::default()
+        },
+    );
+
+    match variant.fields {
+        Fields::Unit => {}
+        _ => {
+            let msg = "enums with data are not supported yet";
+            return Err(Error::new_spanned(variant, msg));
+        }
+    }
+
+    let expr = variant.discriminant.as_ref().map(|(_, expr)| expr);
+    let try_discriminant = match &expr {
+        Some(lit) => discriminants.insert(lit),
+        None => discriminants.insert_next(),
+    };
+    let discriminant = match try_discriminant {
+        Ok(discriminant) => discriminant,
+        Err(err) => return Err(Error::new_spanned(variant, err)),
+    };
+
+    let name = pair(Namespace::ROOT, &variant.ident, cxx_name, rust_name);
+    let expr = variant.discriminant.map(|(_, expr)| expr);
+
+    Ok(Variant {
+        name,
+        discriminant,
+        expr,
+    })
 }
 
 fn parse_foreign_mod(
@@ -288,8 +326,8 @@ fn parse_foreign_mod(
         for item in &mut items {
             if let Api::CxxFunction(efn) | Api::RustFunction(efn) = item {
                 if let Some(receiver) = &mut efn.receiver {
-                    if receiver.ty.is_self() {
-                        receiver.ty = RustName::new(single_type.rust.clone());
+                    if receiver.ty.rust == "Self" {
+                        receiver.ty.rust = single_type.rust.clone();
                     }
                 }
             }
@@ -309,6 +347,7 @@ fn parse_lang(abi: &Abi) -> Result<Lang> {
             ));
         }
     };
+
     match name.value().as_str() {
         "C++" => Ok(Lang::Cxx),
         "Rust" => Ok(Lang::Rust),
@@ -329,6 +368,8 @@ fn parse_extern_type(
     let mut doc = Doc::new();
     let mut derives = Vec::new();
     let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
     attrs::parse(
         cx,
         &foreign_type.attrs,
@@ -336,24 +377,29 @@ fn parse_extern_type(
             doc: Some(&mut doc),
             derives: Some(&mut derives),
             namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
             ..Default::default()
         },
     );
+
     let type_token = foreign_type.type_token;
-    let ident = foreign_type.ident.clone();
+    let name = pair(namespace, &foreign_type.ident, cxx_name, rust_name);
+    let colon_token = None;
+    let bounds = Vec::new();
     let semi_token = foreign_type.semi_token;
-    let api_type = match lang {
+
+    (match lang {
         Lang::Cxx => Api::CxxType,
         Lang::Rust => Api::RustType,
-    };
-    api_type(ExternType {
+    })(ExternType {
         lang,
         doc,
         derives,
         type_token,
-        name: Pair::new(namespace, ident),
-        colon_token: None,
-        bounds: Vec::new(),
+        name,
+        colon_token,
+        bounds,
         semi_token,
         trusted,
     })
@@ -366,6 +412,22 @@ fn parse_extern_fn(
     trusted: bool,
     namespace: &Namespace,
 ) -> Result<Api> {
+    let mut doc = Doc::new();
+    let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
+    attrs::parse(
+        cx,
+        &foreign_fn.attrs,
+        attrs::Parser {
+            doc: Some(&mut doc),
+            namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
+            ..Default::default()
+        },
+    );
+
     let generics = &foreign_fn.sig.generics;
     if generics.where_clause.is_some()
         || generics.params.iter().any(|param| match param {
@@ -378,46 +440,34 @@ fn parse_extern_fn(
             "extern function with generic parameters is not supported yet",
         ));
     }
+
     if let Some(variadic) = &foreign_fn.sig.variadic {
         return Err(Error::new_spanned(
             variadic,
             "variadic function is not supported yet",
         ));
     }
+
     if foreign_fn.sig.asyncness.is_some() {
         return Err(Error::new_spanned(
             foreign_fn,
             "async function is not directly supported yet, but see https://cxx.rs/async.html for a working approach",
         ));
     }
+
     if foreign_fn.sig.constness.is_some() {
         return Err(Error::new_spanned(
             foreign_fn,
             "const extern function is not supported",
         ));
     }
+
     if let Some(abi) = &foreign_fn.sig.abi {
         return Err(Error::new_spanned(
             abi,
             "explicit ABI on extern function is not supported",
         ));
     }
-
-    let mut doc = Doc::new();
-    let mut cxx_name = None;
-    let mut rust_name = None;
-    let mut namespace = namespace.clone();
-    attrs::parse(
-        cx,
-        &foreign_fn.attrs,
-        attrs::Parser {
-            doc: Some(&mut doc),
-            cxx_name: Some(&mut cxx_name),
-            rust_name: Some(&mut rust_name),
-            namespace: Some(&mut namespace),
-            ..Default::default()
-        },
-    );
 
     let mut receiver = None;
     let mut args = Punctuated::new();
@@ -432,7 +482,7 @@ fn parse_extern_fn(
                         lifetime: lifetime.clone(),
                         mutable: arg.mutability.is_some(),
                         var: arg.self_token,
-                        ty: RustName::make_self(arg.self_token.span),
+                        ty: RustName::new(Ident::new("Self", arg.self_token.span)),
                         shorthand: true,
                         pin_tokens: None,
                         mutability: arg.mutability,
@@ -483,20 +533,15 @@ fn parse_extern_fn(
     let throws = throws_tokens.is_some();
     let unsafety = foreign_fn.sig.unsafety;
     let fn_token = foreign_fn.sig.fn_token;
-    let name = Pair::new_from_differing_names(
-        namespace,
-        cxx_name.unwrap_or(foreign_fn.sig.ident.clone()),
-        rust_name.unwrap_or(foreign_fn.sig.ident.clone()),
-    );
+    let name = pair(namespace, &foreign_fn.sig.ident, cxx_name, rust_name);
     let generics = generics.clone();
     let paren_token = foreign_fn.sig.paren_token;
     let semi_token = foreign_fn.semi_token;
-    let api_function = match lang {
+
+    Ok(match lang {
         Lang::Cxx => Api::CxxFunction,
         Lang::Rust => Api::RustFunction,
-    };
-
-    Ok(api_function(ExternFn {
+    }(ExternFn {
         lang,
         doc,
         name,
@@ -565,6 +610,8 @@ fn parse_type_alias(
     let mut doc = Doc::new();
     let mut derives = Vec::new();
     let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
     attrs::parse(
         cx,
         &attrs,
@@ -572,6 +619,8 @@ fn parse_type_alias(
             doc: Some(&mut doc),
             derives: Some(&mut derives),
             namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
             ..Default::default()
         },
     );
@@ -582,11 +631,13 @@ fn parse_type_alias(
         return Err(Error::new_spanned(span, msg));
     }
 
+    let name = pair(namespace, &ident, cxx_name, rust_name);
+
     Ok(Api::TypeAlias(TypeAlias {
         doc,
         derives,
         type_token,
-        name: Pair::new(namespace, ident),
+        name,
         eq_token,
         ty,
         semi_token,
@@ -637,6 +688,8 @@ fn parse_extern_type_bounded(
     let mut doc = Doc::new();
     let mut derives = Vec::new();
     let mut namespace = namespace.clone();
+    let mut cxx_name = None;
+    let mut rust_name = None;
     attrs::parse(
         cx,
         &attrs,
@@ -644,22 +697,25 @@ fn parse_extern_type_bounded(
             doc: Some(&mut doc),
             derives: Some(&mut derives),
             namespace: Some(&mut namespace),
+            cxx_name: Some(&mut cxx_name),
+            rust_name: Some(&mut rust_name),
             ..Default::default()
         },
     );
 
-    let api_type = match lang {
+    let name = pair(namespace, &ident, cxx_name, rust_name);
+    let colon_token = Some(colon_token);
+
+    Ok(match lang {
         Lang::Cxx => Api::CxxType,
         Lang::Rust => Api::RustType,
-    };
-
-    Ok(api_type(ExternType {
+    }(ExternType {
         lang,
         doc,
         derives,
         type_token,
-        name: Pair::new(namespace, ident),
-        colon_token: Some(colon_token),
+        name,
+        colon_token,
         bounds,
         semi_token,
         trusted,
@@ -705,11 +761,16 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         }
     }
 
+    let impl_token = imp.impl_token;
+    let negative = negative_token.is_some();
+    let ty = parse_type(&self_ty)?;
+    let brace_token = imp.brace_token;
+
     Ok(Api::Impl(Impl {
-        impl_token: imp.impl_token,
-        negative: negative_token.is_some(),
-        ty: parse_type(&self_ty)?,
-        brace_token: imp.brace_token,
+        impl_token,
+        negative,
+        ty,
+        brace_token,
         negative_token,
     }))
 }
@@ -770,20 +831,29 @@ fn parse_type(ty: &RustType) -> Result<Type> {
 }
 
 fn parse_type_reference(ty: &TypeReference) -> Result<Type> {
+    let ampersand = ty.and_token;
+    let lifetime = ty.lifetime.clone();
+    let mutable = ty.mutability.is_some();
+    let mutability = ty.mutability;
+
     if let RustType::Slice(slice) = ty.elem.as_ref() {
         let inner = parse_type(&slice.elem)?;
+        let bracket = slice.bracket_token;
         return Ok(Type::SliceRef(Box::new(SliceRef {
-            ampersand: ty.and_token,
-            lifetime: ty.lifetime.clone(),
-            mutable: ty.mutability.is_some(),
-            bracket: slice.bracket_token,
+            ampersand,
+            lifetime,
+            mutable,
+            bracket,
             inner,
-            mutability: ty.mutability,
+            mutability,
         })));
     }
 
     let inner = parse_type(&ty.elem)?;
-    let which = match &inner {
+    let pinned = false;
+    let pin_tokens = None;
+
+    Ok(match &inner {
         Type::Ident(ident) if ident.rust == "str" => {
             if ty.mutability.is_some() {
                 return Err(Error::new_spanned(ty, "unsupported type"));
@@ -792,15 +862,14 @@ fn parse_type_reference(ty: &TypeReference) -> Result<Type> {
             }
         }
         _ => Type::Ref,
-    };
-    Ok(which(Box::new(Ref {
-        pinned: false,
-        ampersand: ty.and_token,
-        lifetime: ty.lifetime.clone(),
-        mutable: ty.mutability.is_some(),
+    }(Box::new(Ref {
+        pinned,
+        ampersand,
+        lifetime,
+        mutable,
         inner,
-        pin_tokens: None,
-        mutability: ty.mutability,
+        pin_tokens,
+        mutability,
     })))
 }
 
@@ -878,6 +947,7 @@ fn parse_type_path(ty: &TypePath) -> Result<Type> {
             PathArguments::Parenthesized(_) => {}
         }
     }
+
     Err(Error::new_spanned(ty, "unsupported type"))
 }
 
@@ -923,12 +993,14 @@ fn parse_type_fn(ty: &TypeBareFn) -> Result<Type> {
             "function pointer with lifetime parameters is not supported yet",
         ));
     }
+
     if ty.variadic.is_some() {
         return Err(Error::new_spanned(
             ty,
             "variadic function pointer is not supported yet",
         ));
     }
+
     let args = ty
         .inputs
         .iter()
@@ -942,18 +1014,26 @@ fn parse_type_fn(ty: &TypeBareFn) -> Result<Type> {
             Ok(Var { ident, ty })
         })
         .collect::<Result<_>>()?;
+
     let mut throws_tokens = None;
     let ret = parse_return_type(&ty.output, &mut throws_tokens)?;
     let throws = throws_tokens.is_some();
+
+    let unsafety = ty.unsafety;
+    let fn_token = ty.fn_token;
+    let generics = Generics::default();
+    let receiver = None;
+    let paren_token = ty.paren_token;
+
     Ok(Type::Fn(Box::new(Signature {
-        unsafety: ty.unsafety,
-        fn_token: ty.fn_token,
-        generics: Generics::default(),
-        receiver: None,
+        unsafety,
+        fn_token,
+        generics,
+        receiver,
         args,
         ret,
         throws,
-        paren_token: ty.paren_token,
+        paren_token,
         throws_tokens,
     })))
 }
@@ -966,6 +1046,7 @@ fn parse_return_type(
         ReturnType::Default => return Ok(None),
         ReturnType::Type(_, ret) => ret.as_ref(),
     };
+
     if let RustType::Path(ty) = ret {
         let path = &ty.path;
         if ty.qself.is_none() && path.leading_colon.is_none() && path.segments.len() == 1 {
@@ -982,8 +1063,18 @@ fn parse_return_type(
             }
         }
     }
+
     match parse_type(ret)? {
         Type::Void(_) => Ok(None),
         ty => Ok(Some(ty)),
+    }
+}
+
+fn pair(namespace: Namespace, default: &Ident, cxx: Option<Ident>, rust: Option<Ident>) -> Pair {
+    let default = || default.clone();
+    Pair {
+        namespace,
+        cxx: cxx.unwrap_or_else(default),
+        rust: rust.unwrap_or_else(default),
     }
 }

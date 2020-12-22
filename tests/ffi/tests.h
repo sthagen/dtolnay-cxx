@@ -45,6 +45,8 @@ public:
   size_t get() const;
   size_t set(size_t n);
   size_t get2() const;
+  const size_t &getRef() const;
+  size_t &getMut();
   size_t set_succeed(size_t n);
   size_t get_fail();
   const std::vector<uint8_t> &get_v() const;
@@ -59,16 +61,20 @@ private:
 
 struct D {
   uint64_t d;
+  void c_take_trivial_ref_method() const;
+  void c_take_trivial_mut_ref_method();
 };
 
 struct E {
   uint64_t e;
   std::string e_str;
+  void c_take_opaque_ref_method() const;
+  void c_take_opaque_mut_ref_method();
 };
 
 enum COwnedEnum {
-  CVal1,
-  CVal2,
+  CVAL1,
+  CVAL2,
 };
 
 size_t c_return_primitive();

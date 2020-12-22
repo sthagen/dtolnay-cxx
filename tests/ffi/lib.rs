@@ -30,7 +30,8 @@ pub mod ffi {
     enum Enum {
         AVal,
         BVal = 2020,
-        CVal,
+        #[cxx_name = "CVal"]
+        LastVal,
     }
 
     #[namespace = "A"]
@@ -165,9 +166,13 @@ pub mod ffi {
         fn get(self: &C) -> usize;
         fn set(self: Pin<&mut C>, n: usize) -> usize;
         fn get2(&self) -> usize;
+        fn getRef(self: &C) -> &usize;
+        fn getMut(self: Pin<&mut C>) -> &mut usize;
         fn set_succeed(self: Pin<&mut C>, n: usize) -> Result<usize>;
         fn get_fail(self: Pin<&mut C>) -> Result<usize>;
         fn c_method_on_shared(self: &Shared) -> usize;
+        fn c_method_ref_on_shared(self: &Shared) -> &usize;
+        fn c_method_mut_on_shared(self: &mut Shared) -> &mut usize;
         fn c_set_array(self: &mut Array, value: i32);
 
         #[rust_name = "i32_overloaded_method"]
@@ -193,7 +198,9 @@ pub mod ffi {
     #[repr(u32)]
     #[derive(Hash)]
     enum COwnedEnum {
+        #[cxx_name = "CVAL1"]
         CVal1,
+        #[cxx_name = "CVAL2"]
         CVal2,
     }
 
@@ -276,6 +283,8 @@ pub mod ffi {
     struct Dag4 {
         dag0: Dag0,
     }
+
+    impl Box<Shared> {}
 }
 
 mod other {
@@ -467,7 +476,7 @@ fn r_return_enum(n: u32) -> ffi::Enum {
     } else if n <= 2020 {
         ffi::Enum::BVal
     } else {
-        ffi::Enum::CVal
+        ffi::Enum::LastVal
     }
 }
 

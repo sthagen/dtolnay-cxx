@@ -1,9 +1,8 @@
 use crate::syntax::atom::Atom::{self, *};
 use crate::syntax::report::Errors;
-use crate::syntax::types::TrivialReason;
 use crate::syntax::{
-    error, ident, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, Receiver, Ref, Signature,
-    SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
+    error, ident, trivial, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, Receiver, Ref,
+    Signature, SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
 };
 use proc_macro2::{Delimiter, Group, Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -325,17 +324,10 @@ fn check_api_type(cx: &mut Check, ety: &ExternType) {
         cx.error(span, "extern type bounds are not implemented yet");
     }
 
-    if let Some(reason) = cx.types.required_trivial.get(&ety.name.rust) {
-        let what = match reason {
-            TrivialReason::StructField(strct) => format!("a field of `{}`", strct.name.rust),
-            TrivialReason::FunctionArgument(efn) => format!("an argument of `{}`", efn.name.rust),
-            TrivialReason::FunctionReturn(efn) => format!("a return value of `{}`", efn.name.rust),
-            TrivialReason::BoxTarget => format!("Box<{}>", ety.name.rust),
-            TrivialReason::VecElement => format!("a vector element in Vec<{}>", ety.name.rust),
-        };
+    if let Some(reasons) = cx.types.required_trivial.get(&ety.name.rust) {
         let msg = format!(
             "needs a cxx::ExternType impl in order to be used as {}",
-            what,
+            trivial::as_what(&ety.name, reasons),
         );
         cx.error(ety, msg);
     }
@@ -364,7 +356,7 @@ fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
     if let Some(receiver) = &efn.receiver {
         let ref span = span_for_receiver_error(receiver);
 
-        if receiver.ty.is_self() {
+        if receiver.ty.rust == "Self" {
             let mutability = match receiver.mutable {
                 true => "mut ",
                 false => "",
@@ -385,7 +377,7 @@ fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
             cx.error(
                 span,
                 format!(
-                    "mutable reference to C++ type requires a pin -- use `self: Pin<&mut {}>`",
+                    "mutable reference to opaque C++ type requires a pin -- use `self: Pin<&mut {}>`",
                     receiver.ty.rust,
                 ),
             );
@@ -462,6 +454,12 @@ fn check_mut_return_restriction(cx: &mut Check, efn: &ExternFn) {
     match &efn.ret {
         Some(Type::Ref(ty)) if ty.mutable => {}
         _ => return,
+    }
+
+    if let Some(r) = &efn.receiver {
+        if r.mutable {
+            return;
+        }
     }
 
     for arg in &efn.args {

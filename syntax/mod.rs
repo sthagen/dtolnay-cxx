@@ -22,6 +22,7 @@ pub mod set;
 pub mod symbol;
 mod tokens;
 mod toposort;
+pub mod trivial;
 pub mod types;
 
 use self::discriminant::Discriminant;
@@ -158,7 +159,7 @@ pub struct Receiver {
 }
 
 pub struct Variant {
-    pub ident: Ident,
+    pub name: Pair,
     pub discriminant: Discriminant,
     pub expr: Option<Expr>,
 }
