@@ -123,6 +123,9 @@ void c_take_ref_ns_c(const ::H::H &h);
 void c_take_str(rust::Str s);
 void c_take_slice_char(rust::Slice<const char> s);
 void c_take_slice_shared(rust::Slice<const Shared> s);
+void c_take_slice_shared_sort(rust::Slice<Shared> s);
+void c_take_slice_r(rust::Slice<const R> s);
+void c_take_slice_r_sort(rust::Slice<R> s);
 void c_take_rust_string(rust::String s);
 void c_take_unique_ptr_string(std::unique_ptr<std::string> s);
 void c_take_unique_ptr_vector_u8(std::unique_ptr<std::vector<uint8_t>> v);
@@ -164,6 +167,8 @@ std::unique_ptr<std::string> c_try_return_unique_ptr_string();
 rust::Vec<uint8_t> c_try_return_rust_vec();
 rust::Vec<rust::String> c_try_return_rust_vec_string();
 const rust::Vec<uint8_t> &c_try_return_ref_rust_vec(const C &c);
+
+size_t c_get_use_count(const std::weak_ptr<C> &weak) noexcept;
 
 void c_take_trivial_ptr(std::unique_ptr<D> d);
 void c_take_trivial_ref(const D &d);

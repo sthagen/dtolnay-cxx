@@ -1,5 +1,6 @@
 #![allow(clippy::assertions_on_constants, clippy::float_cmp, clippy::unit_cmp)]
 
+use cxx::SharedPtr;
 use cxx_test_suite::module::ffi2;
 use cxx_test_suite::{cast, ffi, R};
 use std::cell::Cell;
@@ -36,7 +37,6 @@ fn test_c_return() {
     assert_eq!(2020, ffi::c_return_shared().z);
     assert_eq!(2020, ffi::c_return_box().0);
     ffi::c_return_unique_ptr();
-    ffi::c_return_shared_ptr();
     ffi2::c_return_ns_unique_ptr();
     assert_eq!(2020, *ffi::c_return_ref(&shared));
     assert_eq!(2020, *ffi::c_return_ns_ref(&ns_shared));
@@ -125,6 +125,23 @@ fn test_c_take() {
         ffi::Shared { z: 2020 },
         ffi::Shared { z: 2021 },
     ]));
+    let shared_sort_slice = &mut [
+        ffi::Shared { z: 2 },
+        ffi::Shared { z: 0 },
+        ffi::Shared { z: 7 },
+        ffi::Shared { z: 4 },
+    ];
+    check!(ffi::c_take_slice_shared_sort(shared_sort_slice));
+    assert_eq!(shared_sort_slice[0].z, 0);
+    assert_eq!(shared_sort_slice[1].z, 2);
+    assert_eq!(shared_sort_slice[2].z, 4);
+    assert_eq!(shared_sort_slice[3].z, 7);
+    let r_sort_slice = &mut [R(2020), R(2050), R(2021)];
+    check!(ffi::c_take_slice_r(r_sort_slice));
+    check!(ffi::c_take_slice_r_sort(r_sort_slice));
+    assert_eq!(r_sort_slice[0].0, 2020);
+    assert_eq!(r_sort_slice[1].0, 2021);
+    assert_eq!(r_sort_slice[2].0, 2050);
     check!(ffi::c_take_rust_string("2020".to_owned()));
     check!(ffi::c_take_unique_ptr_string(
         ffi::c_return_unique_ptr_string()
@@ -222,6 +239,20 @@ fn test_c_method_calls() {
     let mut array = ffi::Array { a: [0, 0, 0, 0] };
     array.c_set_array(val);
     assert_eq!(array.a.len() as i32 * val, array.r_get_array_sum());
+}
+
+#[test]
+fn test_shared_ptr_weak_ptr() {
+    let shared_ptr = ffi::c_return_shared_ptr();
+    let weak_ptr = SharedPtr::downgrade(&shared_ptr);
+    assert_eq!(1, ffi::c_get_use_count(&weak_ptr));
+
+    assert!(!weak_ptr.upgrade().is_null());
+    assert_eq!(1, ffi::c_get_use_count(&weak_ptr));
+
+    drop(shared_ptr);
+    assert_eq!(0, ffi::c_get_use_count(&weak_ptr));
+    assert!(weak_ptr.upgrade().is_null());
 }
 
 #[test]

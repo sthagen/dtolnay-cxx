@@ -52,9 +52,10 @@ fn sort_by_inner_namespace(apis: Vec<&Api>, depth: usize) -> NamespaceEntries {
 mod tests {
     use super::NamespaceEntries;
     use crate::syntax::namespace::Namespace;
-    use crate::syntax::{Api, Doc, ExternType, Lang, Pair};
+    use crate::syntax::{Api, Doc, ExternType, Lang, Lifetimes, Pair};
     use proc_macro2::{Ident, Span};
     use std::iter::FromIterator;
+    use syn::punctuated::Punctuated;
     use syn::Token;
 
     #[test]
@@ -135,6 +136,11 @@ mod tests {
                 namespace: ns,
                 cxx: ident.clone(),
                 rust: ident,
+            },
+            generics: Lifetimes {
+                lt_token: None,
+                lifetimes: Punctuated::new(),
+                gt_token: None,
             },
             colon_token: None,
             bounds: Vec::new(),

@@ -74,6 +74,7 @@ pub struct ExternType {
     pub derives: Vec<Derive>,
     pub type_token: Token![type],
     pub name: Pair,
+    pub generics: Lifetimes,
     pub colon_token: Option<Token![:]>,
     pub bounds: Vec<Derive>,
     pub semi_token: Token![;],
@@ -115,6 +116,7 @@ pub struct TypeAlias {
     pub derives: Vec<Derive>,
     pub type_token: Token![type],
     pub name: Pair,
+    pub generics: Lifetimes,
     pub eq_token: Token![=],
     pub ty: RustType,
     pub semi_token: Token![;],
@@ -126,6 +128,12 @@ pub struct Impl {
     pub ty: Type,
     pub brace_token: Brace,
     pub negative_token: Option<Token![!]>,
+}
+
+pub struct Lifetimes {
+    pub lt_token: Option<Token![<]>,
+    pub lifetimes: Punctuated<Lifetime, Token![,]>,
+    pub gt_token: Option<Token![>]>,
 }
 
 pub struct Signature {
@@ -170,6 +178,7 @@ pub enum Type {
     RustVec(Box<Ty1>),
     UniquePtr(Box<Ty1>),
     SharedPtr(Box<Ty1>),
+    WeakPtr(Box<Ty1>),
     Ref(Box<Ref>),
     Str(Box<Ref>),
     CxxVector(Box<Ty1>),

@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.21")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.23")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -410,6 +410,7 @@ mod unique_ptr;
 mod unwind;
 #[path = "cxx_vector.rs"]
 pub mod vector;
+mod weak_ptr;
 
 pub use crate::exception::Exception;
 pub use crate::extern_type::{kind, ExternType};
@@ -418,6 +419,7 @@ pub use crate::string::CxxString;
 pub use crate::unique_ptr::UniquePtr;
 #[doc(inline)]
 pub use crate::vector::CxxVector;
+pub use crate::weak_ptr::WeakPtr;
 pub use cxxbridge_macro::bridge;
 
 /// For use in impls of the `ExternType` trait. See [`ExternType`].
@@ -456,6 +458,7 @@ pub mod private {
     pub use crate::unique_ptr::UniquePtrTarget;
     pub use crate::unwind::catch_unwind;
     pub use crate::vector::VectorElement;
+    pub use crate::weak_ptr::WeakPtrTarget;
 }
 
 mod actually_private {

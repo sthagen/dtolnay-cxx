@@ -4,8 +4,8 @@ use crate::syntax::report::Errors;
 use crate::syntax::Atom::*;
 use crate::syntax::{
     attrs, error, Api, Array, Derive, Doc, Enum, ExternFn, ExternType, Impl, Include, IncludeKind,
-    Lang, Namespace, Pair, Receiver, Ref, RustName, Signature, SliceRef, Struct, Ty1, Type,
-    TypeAlias, Var, Variant,
+    Lang, Lifetimes, Namespace, Pair, Receiver, Ref, RustName, Signature, SliceRef, Struct, Ty1,
+    Type, TypeAlias, Var, Variant,
 };
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
@@ -385,6 +385,11 @@ fn parse_extern_type(
 
     let type_token = foreign_type.type_token;
     let name = pair(namespace, &foreign_type.ident, cxx_name, rust_name);
+    let generics = Lifetimes {
+        lt_token: None,
+        lifetimes: Punctuated::new(),
+        gt_token: None,
+    };
     let colon_token = None;
     let bounds = Vec::new();
     let semi_token = foreign_type.semi_token;
@@ -398,6 +403,7 @@ fn parse_extern_type(
         derives,
         type_token,
         name,
+        generics,
         colon_token,
         bounds,
         semi_token,
@@ -578,14 +584,54 @@ fn parse_extern_verbatim(
             }
         };
         let ident: Ident = input.parse()?;
+        let generics: Generics = input.parse()?;
+        let mut lifetimes = Punctuated::new();
+        let mut has_unsupported_generic_param = false;
+        for pair in generics.params.into_pairs() {
+            let (param, punct) = pair.into_tuple();
+            match param {
+                GenericParam::Lifetime(param) => {
+                    if !param.bounds.is_empty() && !has_unsupported_generic_param {
+                        let msg = "lifetime parameter with bounds is not supported yet";
+                        cx.error(&param, msg);
+                        has_unsupported_generic_param = true;
+                    }
+                    lifetimes.push_value(param.lifetime);
+                    if let Some(punct) = punct {
+                        lifetimes.push_punct(punct);
+                    }
+                }
+                GenericParam::Type(param) => {
+                    if !has_unsupported_generic_param {
+                        let msg = "extern type with generic type parameter is not supported yet";
+                        cx.error(&param, msg);
+                        has_unsupported_generic_param = true;
+                    }
+                }
+                GenericParam::Const(param) => {
+                    if !has_unsupported_generic_param {
+                        let msg = "extern type with const generic parameter is not supported yet";
+                        cx.error(&param, msg);
+                        has_unsupported_generic_param = true;
+                    }
+                }
+            }
+        }
+        let lifetimes = Lifetimes {
+            lt_token: generics.lt_token,
+            lifetimes,
+            gt_token: generics.gt_token,
+        };
         let lookahead = input.lookahead1();
         if lookahead.peek(Token![=]) {
             // type Alias = crate::path::to::Type;
-            parse_type_alias(cx, attrs, type_token, ident, input, lang, namespace)
-        } else if lookahead.peek(Token![:]) {
+            parse_type_alias(
+                cx, attrs, type_token, ident, lifetimes, input, lang, namespace,
+            )
+        } else if lookahead.peek(Token![:]) || lookahead.peek(Token![;]) {
             // type Opaque: Bound2 + Bound2;
             parse_extern_type_bounded(
-                cx, attrs, type_token, ident, input, lang, trusted, namespace,
+                cx, attrs, type_token, ident, lifetimes, input, lang, trusted, namespace,
             )
         } else {
             Err(lookahead.error())
@@ -599,6 +645,7 @@ fn parse_type_alias(
     attrs: Vec<Attribute>,
     type_token: Token![type],
     ident: Ident,
+    generics: Lifetimes,
     input: ParseStream,
     lang: Lang,
     namespace: &Namespace,
@@ -638,6 +685,7 @@ fn parse_type_alias(
         derives,
         type_token,
         name,
+        generics,
         eq_token,
         ty,
         semi_token,
@@ -649,38 +697,41 @@ fn parse_extern_type_bounded(
     attrs: Vec<Attribute>,
     type_token: Token![type],
     ident: Ident,
+    generics: Lifetimes,
     input: ParseStream,
     lang: Lang,
     trusted: bool,
     namespace: &Namespace,
 ) -> Result<Api> {
-    let colon_token: Token![:] = input.parse()?;
     let mut bounds = Vec::new();
-    loop {
-        match input.parse()? {
-            TypeParamBound::Trait(TraitBound {
-                paren_token: None,
-                modifier: TraitBoundModifier::None,
-                lifetimes: None,
-                path,
-            }) if if let Some(derive) = path.get_ident().and_then(Derive::from) {
-                bounds.push(derive);
-                true
-            } else {
-                false
-            } => {}
-            bound @ TypeParamBound::Trait(_) | bound @ TypeParamBound::Lifetime(_) => {
-                cx.error(bound, "unsupported trait");
+    let colon_token: Option<Token![:]> = input.parse()?;
+    if colon_token.is_some() {
+        loop {
+            match input.parse()? {
+                TypeParamBound::Trait(TraitBound {
+                    paren_token: None,
+                    modifier: TraitBoundModifier::None,
+                    lifetimes: None,
+                    path,
+                }) if if let Some(derive) = path.get_ident().and_then(Derive::from) {
+                    bounds.push(derive);
+                    true
+                } else {
+                    false
+                } => {}
+                bound @ TypeParamBound::Trait(_) | bound @ TypeParamBound::Lifetime(_) => {
+                    cx.error(bound, "unsupported trait");
+                }
             }
-        }
 
-        let lookahead = input.lookahead1();
-        if lookahead.peek(Token![+]) {
-            input.parse::<Token![+]>()?;
-        } else if lookahead.peek(Token![;]) {
-            break;
-        } else {
-            return Err(lookahead.error());
+            let lookahead = input.lookahead1();
+            if lookahead.peek(Token![+]) {
+                input.parse::<Token![+]>()?;
+            } else if lookahead.peek(Token![;]) {
+                break;
+            } else {
+                return Err(lookahead.error());
+            }
         }
     }
     let semi_token: Token![;] = input.parse()?;
@@ -704,7 +755,6 @@ fn parse_extern_type_bounded(
     );
 
     let name = pair(namespace, &ident, cxx_name, rust_name);
-    let colon_token = Some(colon_token);
 
     Ok(match lang {
         Lang::Cxx => Api::CxxType,
@@ -715,6 +765,7 @@ fn parse_extern_type_bounded(
         derives,
         type_token,
         name,
+        generics,
         colon_token,
         bounds,
         semi_token,
@@ -895,6 +946,16 @@ fn parse_type_path(ty: &TypePath) -> Result<Type> {
                     if let GenericArgument::Type(arg) = &generic.args[0] {
                         let inner = parse_type(arg)?;
                         return Ok(Type::SharedPtr(Box::new(Ty1 {
+                            name: ident,
+                            langle: generic.lt_token,
+                            inner,
+                            rangle: generic.gt_token,
+                        })));
+                    }
+                } else if ident == "WeakPtr" && generic.args.len() == 1 {
+                    if let GenericArgument::Type(arg) = &generic.args[0] {
+                        let inner = parse_type(arg)?;
+                        return Ok(Type::WeakPtr(Box::new(Ty1 {
                             name: ident,
                             langle: generic.lt_token,
                             inner,

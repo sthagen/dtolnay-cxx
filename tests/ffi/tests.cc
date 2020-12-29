@@ -1,5 +1,6 @@
 #include "tests/ffi/tests.h"
 #include "tests/ffi/lib.rs.h"
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -274,7 +275,37 @@ void c_take_slice_char(rust::Slice<const char> s) {
 }
 
 void c_take_slice_shared(rust::Slice<const Shared> s) {
-  if (s.size() == 2 && s.data()->z == 2020 && (s.data() + 1)->z == 2021) {
+  if (s.size() == 2 && s.data()->z == 2020 && s[1].z == 2021 &&
+      s.at(1).z == 2021 && s.front().z == 2020 && s.back().z == 2021) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_slice_shared_sort(rust::Slice<Shared> s) {
+  // Exercise requirements of RandomAccessIterator.
+  // https://en.cppreference.com/w/cpp/named_req/RandomAccessIterator
+  std::sort(s.begin(), s.end());
+  if (s[0].z == 0 && s[1].z == 2 && s[2].z == 4 && s[3].z == 7) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+void c_take_slice_r(rust::Slice<const R> s) {
+  if (s.size() == 3 && s[0].get() == 2020 && s[1].get() == 2050) {
+    cxx_test_suite_set_correct();
+  }
+}
+
+bool operator<(const R &a, const R &b) noexcept { return a.get() < b.get(); }
+
+void c_take_slice_r_sort(rust::Slice<R> s) {
+  std::qsort(s.data(), s.size(), rust::size_of<decltype(s)::value_type>(),
+             [](const void *fst, const void *snd) {
+               auto &a = *static_cast<const R *>(fst);
+               auto &b = *static_cast<const R *>(snd);
+               return a < b ? -1 : b < a ? 1 : 0;
+             });
+  if (s[0].get() == 2020 && s[1].get() == 2021 && s[2].get() == 2050) {
     cxx_test_suite_set_correct();
   }
 }
@@ -507,6 +538,10 @@ const rust::Vec<uint8_t> &c_try_return_ref_rust_vec(const C &c) {
   throw std::runtime_error("unimplemented");
 }
 
+size_t c_get_use_count(const std::weak_ptr<C> &weak) noexcept {
+  return weak.use_count();
+}
+
 extern "C" C *cxx_test_suite_get_unique_ptr() noexcept {
   return std::unique_ptr<C>(new C{2020}).release();
 }
@@ -667,6 +702,11 @@ extern "C" const char *cxx_run_test() noexcept {
       return "Assertion failed: `" #x "`, " __FILE__ ":" TOSTRING(__LINE__);   \
     }                                                                          \
   } while (false)
+
+  ASSERT(rust::size_of<R>() == sizeof(size_t));
+  ASSERT(rust::align_of<R>() == alignof(size_t));
+  ASSERT(rust::size_of<size_t>() == sizeof(size_t));
+  ASSERT(rust::align_of<size_t>() == alignof(size_t));
 
   ASSERT(r_return_primitive() == 2020);
   ASSERT(r_return_shared().z == 2020);

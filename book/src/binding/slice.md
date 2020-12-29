@@ -9,11 +9,16 @@
 ```cpp,hidelines
 // rust/cxx.h
 #
+# #include <iterator>
+# #include <type_traits>
+#
 # namespace rust {
 
 template <typename T>
 class Slice final {
 public:
+  using value_type = T;
+
   Slice() noexcept;
   Slice(const Slice<T> &) noexcept;
   Slice(T *, size_t count) noexcept;
@@ -25,6 +30,12 @@ public:
   T *data() const noexcept;
   size_t size() const noexcept;
   size_t length() const noexcept;
+  bool empty() const noexcept;
+
+  T &operator[](size_t n) const noexcept;
+  T &at(size_t n) const;
+  T &front() const noexcept;
+  T &back() const noexcept;
 
   class iterator;
   iterator begin() const noexcept;
@@ -34,16 +45,32 @@ public:
 # template <typename T>
 # class Slice<T>::iterator final {
 # public:
+#   using iterator_category = std::random_access_iterator_tag;
 #   using value_type = T;
 #   using pointer = T *;
 #   using reference = T &;
 #
 #   T &operator*() const noexcept;
 #   T *operator->() const noexcept;
+#   T &operator[](ptrdiff_t) const noexcept;
+#
 #   iterator &operator++() noexcept;
 #   iterator operator++(int) noexcept;
+#   iterator &operator--() noexcept;
+#   iterator operator--(int) noexcept;
+#
+#   iterator &operator+=(ptrdiff_t) noexcept;
+#   iterator &operator-=(ptrdiff_t) noexcept;
+#   iterator operator+(ptrdiff_t) const noexcept;
+#   iterator operator-(ptrdiff_t) const noexcept;
+#   ptrdiff_t operator-(const iterator &) const noexcept;
+#
 #   bool operator==(const iterator &) const noexcept;
 #   bool operator!=(const iterator &) const noexcept;
+#   bool operator<(const iterator &) const noexcept;
+#   bool operator>(const iterator &) const noexcept;
+#   bool operator<=(const iterator &) const noexcept;
+#   bool operator>=(const iterator &) const noexcept;
 # };
 #
 # } // namespace rust

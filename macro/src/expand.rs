@@ -55,7 +55,10 @@ fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
             Api::CxxFunction(efn) => {
                 expanded.extend(expand_cxx_function_shim(efn, types));
             }
-            Api::RustType(ety) => expanded.extend(expand_rust_type_impl(ety)),
+            Api::RustType(ety) => {
+                expanded.extend(expand_rust_type_impl(ety));
+                hidden.extend(expand_rust_type_layout(ety));
+            }
             Api::RustFunction(efn) => hidden.extend(expand_rust_function_shim(efn, types)),
             Api::TypeAlias(alias) => {
                 expanded.extend(expand_type_alias(alias));
@@ -96,6 +99,14 @@ fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
                     && (explicit_impl.is_some() || !types.aliases.contains_key(&ident.rust))
                 {
                     expanded.extend(expand_shared_ptr(ident, types, explicit_impl));
+                }
+            }
+        } else if let Type::WeakPtr(ptr) = ty {
+            if let Type::Ident(ident) = &ptr.inner {
+                if Atom::from(&ident.rust).is_none()
+                    && (explicit_impl.is_some() || !types.aliases.contains_key(&ident.rust))
+                {
+                    expanded.extend(expand_weak_ptr(ident, types, explicit_impl));
                 }
             }
         } else if let Type::CxxVector(ptr) = ty {
@@ -302,16 +313,23 @@ fn expand_enum(enm: &Enum) -> TokenStream {
 fn expand_cxx_type(ety: &ExternType) -> TokenStream {
     let ident = &ety.name.rust;
     let doc = &ety.doc;
+    let generics = &ety.generics;
     let type_id = type_id(&ety.name);
+
+    let lifetime_fields = ety.generics.lifetimes.iter().map(|lifetime| {
+        let field = format_ident!("_lifetime_{}", lifetime.ident);
+        quote!(#field: ::std::marker::PhantomData<&#lifetime ()>)
+    });
 
     quote! {
         #doc
         #[repr(C)]
-        pub struct #ident {
+        pub struct #ident #generics {
             _private: ::cxx::private::Opaque,
+            #(#lifetime_fields,)*
         }
 
-        unsafe impl ::cxx::ExternType for #ident {
+        unsafe impl #generics ::cxx::ExternType for #ident #generics {
             type Id = #type_id;
             type Kind = ::cxx::kind::Opaque;
         }
@@ -329,12 +347,18 @@ fn expand_cxx_type_assert_pinned(ety: &ExternType) -> TokenStream {
                 fn infer() {}
             }
 
-            impl<T: ?Sized> __AmbiguousIfImpl<()> for T {}
+            impl<T> __AmbiguousIfImpl<()> for T
+            where
+                T: ?::std::marker::Sized
+            {}
 
             #[allow(dead_code)]
             struct __Invalid;
 
-            impl<T: ?Sized + Unpin> __AmbiguousIfImpl<__Invalid> for T {}
+            impl<T> __AmbiguousIfImpl<__Invalid> for T
+            where
+                T: ?::std::marker::Sized + ::std::marker::Unpin,
+            {}
 
             // If there is only one specialized trait impl, type inference with
             // `_` can be resolved and this can compile. Fails to compile if
@@ -660,18 +684,47 @@ fn expand_rust_type_assert_sized(ety: &ExternType) -> TokenStream {
 
     let ident = &ety.name.rust;
     let begin_span = Token![::](ety.type_token.span);
-    let sized = quote_spanned! {ety.semi_token.span=>
-        #begin_span std::marker::Sized
-    };
     let unpin = quote_spanned! {ety.semi_token.span=>
         #begin_span std::marker::Unpin
     };
     quote_spanned! {ident.span()=>
         let _ = {
-            fn __AssertSized<T: ?#sized + #sized>() {}
-            fn __AssertUnpin<T: #unpin>() {}
-            (__AssertSized::<#ident>, __AssertUnpin::<#ident>)
+            fn __AssertUnpin<T: ?::std::marker::Sized + #unpin>() {}
+            __AssertUnpin::<#ident>
         };
+    }
+}
+
+fn expand_rust_type_layout(ety: &ExternType) -> TokenStream {
+    let ident = &ety.name.rust;
+    let begin_span = Token![::](ety.type_token.span);
+    let sized = quote_spanned! {ety.semi_token.span=>
+        #begin_span std::marker::Sized
+    };
+
+    let link_sizeof = mangle::operator(&ety.name, "sizeof");
+    let link_alignof = mangle::operator(&ety.name, "alignof");
+
+    let local_sizeof = format_ident!("__sizeof_{}", ety.name.rust);
+    let local_alignof = format_ident!("__alignof_{}", ety.name.rust);
+
+    quote_spanned! {ident.span()=>
+        {
+            #[doc(hidden)]
+            fn __AssertSized<T: ?#sized + #sized>() -> ::std::alloc::Layout {
+                ::std::alloc::Layout::new::<T>()
+            }
+            #[doc(hidden)]
+            #[export_name = #link_sizeof]
+            extern "C" fn #local_sizeof() -> usize {
+                __AssertSized::<#ident>().size()
+            }
+            #[doc(hidden)]
+            #[export_name = #link_alignof]
+            extern "C" fn #local_alignof() -> usize {
+                __AssertSized::<#ident>().align()
+            }
+        }
     }
 }
 
@@ -913,10 +966,11 @@ fn expand_rust_function_shim_super(
 fn expand_type_alias(alias: &TypeAlias) -> TokenStream {
     let doc = &alias.doc;
     let ident = &alias.name.rust;
+    let generics = &alias.generics;
     let ty = &alias.ty;
     quote! {
         #doc
-        pub type #ident = #ty;
+        pub type #ident #generics = #ty;
     }
 }
 
@@ -991,7 +1045,6 @@ fn expand_rust_vec(elem: &RustName, types: &Types) -> TokenStream {
     let link_data = format!("{}data", link_prefix);
     let link_reserve_total = format!("{}reserve_total", link_prefix);
     let link_set_len = format!("{}set_len", link_prefix);
-    let link_stride = format!("{}stride", link_prefix);
 
     let local_prefix = format_ident!("{}__vec_", elem.rust);
     let local_new = format_ident!("{}new", local_prefix);
@@ -1001,7 +1054,6 @@ fn expand_rust_vec(elem: &RustName, types: &Types) -> TokenStream {
     let local_data = format_ident!("{}data", local_prefix);
     let local_reserve_total = format_ident!("{}reserve_total", local_prefix);
     let local_set_len = format_ident!("{}set_len", local_prefix);
-    let local_stride = format_ident!("{}stride", local_prefix);
 
     let span = elem.span();
     quote_spanned! {span=>
@@ -1041,11 +1093,6 @@ fn expand_rust_vec(elem: &RustName, types: &Types) -> TokenStream {
         #[export_name = #link_set_len]
         unsafe extern "C" fn #local_set_len(this: *mut ::cxx::private::RustVec<#elem>, len: usize) {
             (*this).set_len(len);
-        }
-        #[doc(hidden)]
-        #[export_name = #link_stride]
-        unsafe extern "C" fn #local_stride() -> usize {
-            ::std::mem::size_of::<#elem>()
         }
     }
 }
@@ -1186,6 +1233,62 @@ fn expand_shared_ptr(ident: &RustName, types: &Types, explicit_impl: Option<&Imp
                     fn __get(this: *const ::std::ffi::c_void) -> *const ::std::ffi::c_void;
                 }
                 __get(this).cast()
+            }
+            unsafe fn __drop(this: *mut ::std::ffi::c_void) {
+                extern "C" {
+                    #[link_name = #link_drop]
+                    fn __drop(this: *mut ::std::ffi::c_void);
+                }
+                __drop(this);
+            }
+        }
+    }
+}
+
+fn expand_weak_ptr(ident: &RustName, types: &Types, explicit_impl: Option<&Impl>) -> TokenStream {
+    let name = ident.rust.to_string();
+    let prefix = format!("cxxbridge1$weak_ptr${}$", ident.to_symbol(types));
+    let link_null = format!("{}null", prefix);
+    let link_clone = format!("{}clone", prefix);
+    let link_downgrade = format!("{}downgrade", prefix);
+    let link_upgrade = format!("{}upgrade", prefix);
+    let link_drop = format!("{}drop", prefix);
+
+    let begin_span =
+        explicit_impl.map_or_else(Span::call_site, |explicit| explicit.impl_token.span);
+    let end_span = explicit_impl.map_or_else(Span::call_site, |explicit| explicit.brace_token.span);
+    let unsafe_token = format_ident!("unsafe", span = begin_span);
+
+    quote_spanned! {end_span=>
+        #unsafe_token impl ::cxx::private::WeakPtrTarget for #ident {
+            const __NAME: &'static dyn ::std::fmt::Display = &#name;
+            unsafe fn __null(new: *mut ::std::ffi::c_void) {
+                extern "C" {
+                    #[link_name = #link_null]
+                    fn __null(new: *mut ::std::ffi::c_void);
+                }
+                __null(new);
+            }
+            unsafe fn __clone(this: *const ::std::ffi::c_void, new: *mut ::std::ffi::c_void) {
+                extern "C" {
+                    #[link_name = #link_clone]
+                    fn __clone(this: *const ::std::ffi::c_void, new: *mut ::std::ffi::c_void);
+                }
+                __clone(this, new);
+            }
+            unsafe fn __downgrade(shared: *const ::std::ffi::c_void, weak: *mut ::std::ffi::c_void) {
+                extern "C" {
+                    #[link_name = #link_downgrade]
+                    fn __downgrade(shared: *const ::std::ffi::c_void, weak: *mut ::std::ffi::c_void);
+                }
+                __downgrade(shared, weak);
+            }
+            unsafe fn __upgrade(weak: *const ::std::ffi::c_void, shared: *mut ::std::ffi::c_void) {
+                extern "C" {
+                    #[link_name = #link_upgrade]
+                    fn __upgrade(weak: *const ::std::ffi::c_void, shared: *mut ::std::ffi::c_void);
+                }
+                __upgrade(weak, shared);
             }
             unsafe fn __drop(this: *mut ::std::ffi::c_void) {
                 extern "C" {

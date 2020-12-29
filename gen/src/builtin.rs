@@ -13,6 +13,7 @@ pub struct Builtins<'a> {
     pub rust_fn: bool,
     pub rust_isize: bool,
     pub opaque: bool,
+    pub layout: bool,
     pub unsafe_bitcopy: bool,
     pub rust_error: bool,
     pub manually_drop: bool,
@@ -58,19 +59,6 @@ pub(super) fn write(out: &mut OutFile) {
         builtin.friend_impl = true;
     }
 
-    if builtin.rust_slice {
-        include.cstddef = true;
-        include.iterator = true;
-        include.type_traits = true;
-        builtin.friend_impl = true;
-    }
-
-    if builtin.rust_box {
-        include.new = true;
-        include.type_traits = true;
-        include.utility = true;
-    }
-
     if builtin.rust_vec {
         include.algorithm = true;
         include.array = true;
@@ -81,7 +69,23 @@ pub(super) fn write(out: &mut OutFile) {
         include.type_traits = true;
         include.utility = true;
         builtin.panic = true;
+        builtin.rust_slice = true;
         builtin.unsafe_bitcopy = true;
+    }
+
+    if builtin.rust_slice {
+        include.cstddef = true;
+        include.iterator = true;
+        include.type_traits = true;
+        builtin.friend_impl = true;
+        builtin.layout = true;
+        builtin.panic = true;
+    }
+
+    if builtin.rust_box {
+        include.new = true;
+        include.type_traits = true;
+        include.utility = true;
     }
 
     if builtin.rust_fn {
@@ -99,6 +103,17 @@ pub(super) fn write(out: &mut OutFile) {
     }
 
     if builtin.relocatable {
+        include.type_traits = true;
+    }
+
+    if builtin.layout {
+        include.type_traits = true;
+        include.cstddef = true;
+        builtin.is_complete = true;
+    }
+
+    if builtin.is_complete {
+        include.cstddef = true;
         include.type_traits = true;
     }
 
@@ -120,9 +135,20 @@ pub(super) fn write(out: &mut OutFile) {
         out.end_block(Block::AnonymousNamespace);
     }
 
+    out.next_section();
     if builtin.rust_str && !builtin.rust_string {
-        out.next_section();
         writeln!(out, "class String;");
+    }
+    if builtin.layout && !builtin.opaque {
+        writeln!(out, "class Opaque;");
+    }
+
+    if builtin.rust_slice {
+        out.next_section();
+        writeln!(out, "template <typename T>");
+        writeln!(out, "::std::size_t size_of();");
+        writeln!(out, "template <typename T>");
+        writeln!(out, "::std::size_t align_of();");
     }
 
     ifndef::write(out, builtin.rust_string, "CXXBRIDGE1_RUST_STRING");
@@ -135,6 +161,8 @@ pub(super) fn write(out: &mut OutFile) {
     ifndef::write(out, builtin.rust_error, "CXXBRIDGE1_RUST_ERROR");
     ifndef::write(out, builtin.rust_isize, "CXXBRIDGE1_RUST_ISIZE");
     ifndef::write(out, builtin.opaque, "CXXBRIDGE1_RUST_OPAQUE");
+    ifndef::write(out, builtin.is_complete, "CXXBRIDGE1_IS_COMPLETE");
+    ifndef::write(out, builtin.layout, "CXXBRIDGE1_LAYOUT");
     ifndef::write(out, builtin.relocatable, "CXXBRIDGE1_RELOCATABLE");
 
     out.begin_block(Block::Namespace("detail"));
@@ -252,12 +280,7 @@ pub(super) fn write(out: &mut OutFile) {
                 out,
                 "  static repr::PtrLen repr(Slice<T> slice) noexcept {{",
             );
-            writeln!(out, "    return repr::PtrLen{{");
-            writeln!(
-                out,
-                "        const_cast<typename ::std::remove_const<T>::type *>(slice.ptr),",
-            );
-            writeln!(out, "        slice.len}};");
+            writeln!(out, "    return repr::PtrLen{{slice.ptr, slice.len}};");
             writeln!(out, "  }}");
         }
         writeln!(out, "}};");
@@ -275,20 +298,6 @@ pub(super) fn write(out: &mut OutFile) {
         writeln!(out, "    return error;");
         writeln!(out, "  }}");
         writeln!(out, "}};");
-    }
-
-    if builtin.is_complete {
-        include.cstddef = true;
-        include.type_traits = true;
-        out.next_section();
-        writeln!(out, "template <typename T, typename = ::std::size_t>");
-        writeln!(out, "struct is_complete : std::false_type {{}};");
-        out.next_section();
-        writeln!(out, "template <typename T>");
-        writeln!(
-            out,
-            "struct is_complete<T, decltype(sizeof(T))> : std::true_type {{}};",
-        );
     }
 
     if builtin.deleter_if {
