@@ -1,11 +1,27 @@
 #![allow(
+    clippy::cast_sign_loss,
     clippy::cognitive_complexity,
+    clippy::default_trait_access,
+    clippy::enum_glob_use,
     clippy::inherent_to_string,
+    clippy::items_after_statements,
     clippy::large_enum_variant,
+    clippy::match_bool,
+    clippy::match_on_vec_items,
+    clippy::match_same_arms,
+    clippy::module_name_repetitions,
+    clippy::needless_pass_by_value,
     clippy::new_without_default,
     clippy::nonminimal_bool,
+    clippy::option_if_let_else,
     clippy::or_fun_call,
+    clippy::redundant_else,
+    clippy::shadow_unrelated,
+    clippy::similar_names,
+    clippy::single_match_else,
+    clippy::struct_excessive_bools,
     clippy::too_many_arguments,
+    clippy::too_many_lines,
     clippy::toplevel_ref_arg
 )]
 
@@ -53,7 +69,11 @@ fn try_main() -> Result<()> {
     for output in opt.outputs {
         let kind = if opt.input.is_none() {
             Kind::Header
-        } else if opt.header || output.ends_with(".h") {
+        } else if opt.header
+            || output.ends_with(".h")
+            || output.ends_with(".hh")
+            || output.ends_with(".hpp")
+        {
             gen_header = true;
             Kind::GeneratedHeader
         } else {

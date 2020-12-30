@@ -1,4 +1,12 @@
-#![allow(clippy::assertions_on_constants, clippy::float_cmp, clippy::unit_cmp)]
+#![allow(
+    clippy::assertions_on_constants,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::float_cmp,
+    clippy::needless_pass_by_value,
+    clippy::unit_cmp,
+    clippy::unseparated_literal_suffix
+)]
 
 use cxx::SharedPtr;
 use cxx_test_suite::module::ffi2;
@@ -19,11 +27,7 @@ macro_rules! check {
     ($run:expr) => {{
         CORRECT.with(|correct| correct.set(false));
         $run;
-        assert!(
-            CORRECT.with(|correct| correct.get()),
-            "{}",
-            stringify!($run),
-        );
+        assert!(CORRECT.with(Cell::get), "{}", stringify!($run));
     }};
 }
 

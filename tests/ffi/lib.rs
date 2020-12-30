@@ -1,9 +1,13 @@
 #![allow(
     clippy::boxed_local,
     clippy::just_underscores_and_digits,
+    clippy::let_underscore_drop,
+    clippy::must_use_candidate,
+    clippy::needless_pass_by_value,
     clippy::ptr_arg,
     clippy::trivially_copy_pass_by_ref,
-    clippy::unnecessary_wraps
+    clippy::unnecessary_wraps,
+    clippy::unused_self
 )]
 
 pub mod cast;
