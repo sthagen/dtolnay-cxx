@@ -1,7 +1,6 @@
 use crate::syntax::{
-    Array, ExternFn, Impl, Include, Receiver, Ref, Signature, SliceRef, Ty1, Type,
+    Array, ExternFn, Impl, Include, Lifetimes, Receiver, Ref, Signature, SliceRef, Ty1, Type, Var,
 };
-use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -77,6 +76,38 @@ impl PartialEq for Type {
             (Type::SliceRef(lhs), Type::SliceRef(rhs)) => lhs == rhs,
             (Type::Void(_), Type::Void(_)) => true,
             (_, _) => false,
+        }
+    }
+}
+
+impl Eq for Lifetimes {}
+
+impl PartialEq for Lifetimes {
+    fn eq(&self, other: &Lifetimes) -> bool {
+        let Lifetimes {
+            lt_token: _,
+            lifetimes,
+            gt_token: _,
+        } = self;
+        let Lifetimes {
+            lt_token: _,
+            lifetimes: lifetimes2,
+            gt_token: _,
+        } = other;
+        lifetimes.iter().eq(lifetimes2)
+    }
+}
+
+impl Hash for Lifetimes {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let Lifetimes {
+            lt_token: _,
+            lifetimes,
+            gt_token: _,
+        } = self;
+        lifetimes.len().hash(state);
+        for lifetime in lifetimes {
+            lifetime.hash(state);
         }
     }
 }
@@ -292,6 +323,42 @@ impl Hash for Signature {
     }
 }
 
+impl Eq for Var {}
+
+impl PartialEq for Var {
+    fn eq(&self, other: &Var) -> bool {
+        let Var {
+            doc: _,
+            attrs: _,
+            visibility: _,
+            ident,
+            ty,
+        } = self;
+        let Var {
+            doc: _,
+            attrs: _,
+            visibility: _,
+            ident: ident2,
+            ty: ty2,
+        } = other;
+        ident == ident2 && ty == ty2
+    }
+}
+
+impl Hash for Var {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let Var {
+            doc: _,
+            attrs: _,
+            visibility: _,
+            ident,
+            ty,
+        } = self;
+        ident.hash(state);
+        ty.hash(state);
+    }
+}
+
 impl Eq for Receiver {}
 
 impl PartialEq for Receiver {
@@ -346,11 +413,13 @@ impl Hash for Impl {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let Impl {
             impl_token: _,
+            generics,
             negative,
             ty,
             brace_token: _,
             negative_token: _,
         } = self;
+        generics.hash(state);
         if *negative {
             negative.hash(state);
         }
@@ -364,6 +433,7 @@ impl PartialEq for Impl {
     fn eq(&self, other: &Impl) -> bool {
         let Impl {
             impl_token: _,
+            generics,
             negative,
             ty,
             brace_token: _,
@@ -371,17 +441,12 @@ impl PartialEq for Impl {
         } = self;
         let Impl {
             impl_token: _,
+            generics: generics2,
             negative: negative2,
             ty: ty2,
             brace_token: _,
             negative_token: _,
         } = other;
-        negative == negative2 && ty == ty2
-    }
-}
-
-impl Borrow<Type> for &Impl {
-    fn borrow(&self) -> &Type {
-        &self.ty
+        generics == generics2 && negative == negative2 && ty == ty2
     }
 }

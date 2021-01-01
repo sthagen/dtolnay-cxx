@@ -1,3 +1,4 @@
+use crate::syntax::attrs::OtherAttrs;
 use crate::syntax::discriminant::DiscriminantSet;
 use crate::syntax::file::{Item, ItemForeignMod};
 use crate::syntax::report::Errors;
@@ -9,6 +10,7 @@ use crate::syntax::{
 };
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
+use std::mem;
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::{
@@ -16,7 +18,7 @@ use syn::{
     GenericArgument, GenericParam, Generics, Ident, ItemEnum, ItemImpl, ItemStruct, Lit, LitStr,
     Pat, PathArguments, Result, ReturnType, Token, TraitBound, TraitBoundModifier,
     Type as RustType, TypeArray, TypeBareFn, TypeParamBound, TypePath, TypeReference,
-    Variant as RustVariant,
+    Variant as RustVariant, Visibility,
 };
 
 pub mod kw {
@@ -55,15 +57,15 @@ pub fn parse_items(
     apis
 }
 
-fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Result<Api> {
+fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) -> Result<Api> {
     let mut doc = Doc::new();
     let mut derives = Vec::new();
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &item.attrs,
+        mem::take(&mut item.attrs),
         attrs::Parser {
             doc: Some(&mut doc),
             derives: Some(&mut derives),
@@ -97,6 +99,15 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Res
     let mut fields = Vec::new();
     for field in named_fields.named {
         let ident = field.ident.unwrap();
+        let mut doc = Doc::new();
+        let attrs = attrs::parse(
+            cx,
+            field.attrs,
+            attrs::Parser {
+                doc: Some(&mut doc),
+                ..Default::default()
+            },
+        );
         let ty = match parse_type(&field.ty) {
             Ok(ty) => ty,
             Err(err) => {
@@ -104,9 +115,17 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Res
                 continue;
             }
         };
-        fields.push(Var { ident, ty });
+        let visibility = visibility_pub(&field.vis, &ident);
+        fields.push(Var {
+            doc,
+            attrs,
+            visibility,
+            ident,
+            ty,
+        });
     }
 
+    let visibility = visibility_pub(&item.vis, &item.ident);
     let struct_token = item.struct_token;
     let name = pair(namespace, &item.ident, cxx_name, rust_name);
     let brace_token = named_fields.brace_token;
@@ -114,6 +133,8 @@ fn parse_struct(cx: &mut Errors, item: ItemStruct, namespace: &Namespace) -> Res
     Ok(Api::Struct(Struct {
         doc,
         derives,
+        attrs,
+        visibility,
         struct_token,
         name,
         brace_token,
@@ -128,9 +149,9 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &item.attrs,
+        item.attrs,
         attrs::Parser {
             doc: Some(&mut doc),
             derives: Some(&mut derives),
@@ -163,6 +184,7 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
         }
     }
 
+    let visibility = visibility_pub(&item.vis, &item.ident);
     let enum_token = item.enum_token;
     let brace_token = item.brace_token;
 
@@ -184,6 +206,8 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
     Ok(Api::Enum(Enum {
         doc,
         derives,
+        attrs,
+        visibility,
         enum_token,
         name,
         brace_token,
@@ -196,15 +220,17 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
 
 fn parse_variant(
     cx: &mut Errors,
-    variant: RustVariant,
+    mut variant: RustVariant,
     discriminants: &mut DiscriminantSet,
 ) -> Result<Variant> {
+    let mut doc = Doc::new();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &variant.attrs,
+        mem::take(&mut variant.attrs),
         attrs::Parser {
+            doc: Some(&mut doc),
             cxx_name: Some(&mut cxx_name),
             rust_name: Some(&mut rust_name),
             ..Default::default()
@@ -233,6 +259,8 @@ fn parse_variant(
     let expr = variant.discriminant.map(|(_, expr)| expr);
 
     Ok(Variant {
+        doc,
+        attrs,
         name,
         discriminant,
         expr,
@@ -268,7 +296,7 @@ fn parse_foreign_mod(
     let mut namespace = namespace.clone();
     attrs::parse(
         cx,
-        &foreign_mod.attrs,
+        foreign_mod.attrs,
         attrs::Parser {
             namespace: Some(&mut namespace),
             ..Default::default()
@@ -276,7 +304,7 @@ fn parse_foreign_mod(
     );
 
     let mut items = Vec::new();
-    for foreign in &foreign_mod.items {
+    for foreign in foreign_mod.items {
         match foreign {
             ForeignItem::Type(foreign) => {
                 let ety = parse_extern_type(cx, foreign, lang, trusted, &namespace);
@@ -360,7 +388,7 @@ fn parse_lang(abi: &Abi) -> Result<Lang> {
 
 fn parse_extern_type(
     cx: &mut Errors,
-    foreign_type: &ForeignItemType,
+    foreign_type: ForeignItemType,
     lang: Lang,
     trusted: bool,
     namespace: &Namespace,
@@ -370,9 +398,9 @@ fn parse_extern_type(
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &foreign_type.attrs,
+        foreign_type.attrs,
         attrs::Parser {
             doc: Some(&mut doc),
             derives: Some(&mut derives),
@@ -383,6 +411,7 @@ fn parse_extern_type(
         },
     );
 
+    let visibility = visibility_pub(&foreign_type.vis, &foreign_type.ident);
     let type_token = foreign_type.type_token;
     let name = pair(namespace, &foreign_type.ident, cxx_name, rust_name);
     let generics = Lifetimes {
@@ -401,6 +430,8 @@ fn parse_extern_type(
         lang,
         doc,
         derives,
+        attrs,
+        visibility,
         type_token,
         name,
         generics,
@@ -413,7 +444,7 @@ fn parse_extern_type(
 
 fn parse_extern_fn(
     cx: &mut Errors,
-    foreign_fn: &ForeignItemFn,
+    mut foreign_fn: ForeignItemFn,
     lang: Lang,
     trusted: bool,
     namespace: &Namespace,
@@ -422,9 +453,9 @@ fn parse_extern_fn(
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &foreign_fn.attrs,
+        mem::take(&mut foreign_fn.attrs),
         attrs::Parser {
             doc: Some(&mut doc),
             namespace: Some(&mut namespace),
@@ -507,7 +538,16 @@ fn parse_extern_fn(
                 };
                 let ty = parse_type(&arg.ty)?;
                 if ident != "self" {
-                    args.push_value(Var { ident, ty });
+                    let doc = Doc::new();
+                    let attrs = OtherAttrs::none();
+                    let visibility = Token![pub](ident.span());
+                    args.push_value(Var {
+                        doc,
+                        attrs,
+                        visibility,
+                        ident,
+                        ty,
+                    });
                     if let Some(comma) = comma {
                         args.push_punct(*comma);
                     }
@@ -537,6 +577,7 @@ fn parse_extern_fn(
     let mut throws_tokens = None;
     let ret = parse_return_type(&foreign_fn.sig.output, &mut throws_tokens)?;
     let throws = throws_tokens.is_some();
+    let visibility = visibility_pub(&foreign_fn.vis, &foreign_fn.sig.ident);
     let unsafety = foreign_fn.sig.unsafety;
     let fn_token = foreign_fn.sig.fn_token;
     let name = pair(namespace, &foreign_fn.sig.ident, cxx_name, rust_name);
@@ -550,6 +591,8 @@ fn parse_extern_fn(
     }(ExternFn {
         lang,
         doc,
+        attrs,
+        visibility,
         name,
         sig: Signature {
             unsafety,
@@ -569,13 +612,14 @@ fn parse_extern_fn(
 
 fn parse_extern_verbatim(
     cx: &mut Errors,
-    tokens: &TokenStream,
+    tokens: TokenStream,
     lang: Lang,
     trusted: bool,
     namespace: &Namespace,
 ) -> Result<Api> {
     |input: ParseStream| -> Result<Api> {
         let attrs = input.call(Attribute::parse_outer)?;
+        let visibility: Visibility = input.parse()?;
         let type_token: Token![type] = match input.parse()? {
             Some(type_token) => type_token,
             None => {
@@ -626,23 +670,25 @@ fn parse_extern_verbatim(
         if lookahead.peek(Token![=]) {
             // type Alias = crate::path::to::Type;
             parse_type_alias(
-                cx, attrs, type_token, ident, lifetimes, input, lang, namespace,
+                cx, attrs, visibility, type_token, ident, lifetimes, input, lang, namespace,
             )
         } else if lookahead.peek(Token![:]) || lookahead.peek(Token![;]) {
             // type Opaque: Bound2 + Bound2;
             parse_extern_type_bounded(
-                cx, attrs, type_token, ident, lifetimes, input, lang, trusted, namespace,
+                cx, attrs, visibility, type_token, ident, lifetimes, input, lang, trusted,
+                namespace,
             )
         } else {
             Err(lookahead.error())
         }
     }
-    .parse2(tokens.clone())
+    .parse2(tokens)
 }
 
 fn parse_type_alias(
     cx: &mut Errors,
     attrs: Vec<Attribute>,
+    visibility: Visibility,
     type_token: Token![type],
     ident: Ident,
     generics: Lifetimes,
@@ -659,9 +705,9 @@ fn parse_type_alias(
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &attrs,
+        attrs,
         attrs::Parser {
             doc: Some(&mut doc),
             derives: Some(&mut derives),
@@ -678,11 +724,14 @@ fn parse_type_alias(
         return Err(Error::new_spanned(span, msg));
     }
 
+    let visibility = visibility_pub(&visibility, &ident);
     let name = pair(namespace, &ident, cxx_name, rust_name);
 
     Ok(Api::TypeAlias(TypeAlias {
         doc,
         derives,
+        attrs,
+        visibility,
         type_token,
         name,
         generics,
@@ -695,6 +744,7 @@ fn parse_type_alias(
 fn parse_extern_type_bounded(
     cx: &mut Errors,
     attrs: Vec<Attribute>,
+    visibility: Visibility,
     type_token: Token![type],
     ident: Ident,
     generics: Lifetimes,
@@ -741,9 +791,9 @@ fn parse_extern_type_bounded(
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
-    attrs::parse(
+    let attrs = attrs::parse(
         cx,
-        &attrs,
+        attrs,
         attrs::Parser {
             doc: Some(&mut doc),
             derives: Some(&mut derives),
@@ -754,6 +804,7 @@ fn parse_extern_type_bounded(
         },
     );
 
+    let visibility = visibility_pub(&visibility, &ident);
     let name = pair(namespace, &ident, cxx_name, rust_name);
 
     Ok(match lang {
@@ -763,6 +814,8 @@ fn parse_extern_type_bounded(
         lang,
         doc,
         derives,
+        attrs,
+        visibility,
         type_token,
         name,
         generics,
@@ -774,6 +827,8 @@ fn parse_extern_type_bounded(
 }
 
 fn parse_impl(imp: ItemImpl) -> Result<Api> {
+    let impl_token = imp.impl_token;
+
     if !imp.items.is_empty() {
         let mut span = Group::new(Delimiter::Brace, TokenStream::new());
         span.set_span(imp.brace_token.span);
@@ -789,12 +844,34 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         ));
     }
 
-    let generics = &imp.generics;
-    if !generics.params.is_empty() || generics.where_clause.is_some() {
+    if let Some(where_clause) = imp.generics.where_clause {
         return Err(Error::new_spanned(
-            imp,
-            "generic parameters on an impl is not supported",
+            where_clause,
+            "where-clause on an impl is not supported yet",
         ));
+    }
+    let mut generics = Lifetimes {
+        lt_token: imp.generics.lt_token,
+        lifetimes: Punctuated::new(),
+        gt_token: imp.generics.gt_token,
+    };
+    for pair in imp.generics.params.into_pairs() {
+        let (param, punct) = pair.into_tuple();
+        match param {
+            GenericParam::Lifetime(def) if def.bounds.is_empty() => {
+                generics.lifetimes.push_value(def.lifetime);
+                if let Some(punct) = punct {
+                    generics.lifetimes.push_punct(punct);
+                }
+            }
+            _ => {
+                let span = quote!(#impl_token #generics);
+                return Err(Error::new_spanned(
+                    span,
+                    "generic parameter on an impl is not supported yet",
+                ));
+            }
+        }
     }
 
     let mut negative_token = None;
@@ -812,13 +889,13 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         }
     }
 
-    let impl_token = imp.impl_token;
     let negative = negative_token.is_some();
     let ty = parse_type(&self_ty)?;
     let brace_token = imp.brace_token;
 
     Ok(Api::Impl(Impl {
         impl_token,
+        generics,
         negative,
         ty,
         brace_token,
@@ -1003,6 +1080,31 @@ fn parse_type_path(ty: &TypePath) -> Result<Type> {
                             return Ok(Type::Ref(inner));
                         }
                     }
+                } else {
+                    let mut lifetimes = Punctuated::new();
+                    let mut only_lifetimes = true;
+                    for pair in generic.args.pairs() {
+                        let (param, punct) = pair.into_tuple();
+                        if let GenericArgument::Lifetime(param) = param {
+                            lifetimes.push_value(param.clone());
+                            if let Some(punct) = punct {
+                                lifetimes.push_punct(*punct);
+                            }
+                        } else {
+                            only_lifetimes = false;
+                            break;
+                        }
+                    }
+                    if only_lifetimes {
+                        return Ok(Type::Ident(RustName {
+                            rust: ident,
+                            generics: Lifetimes {
+                                lt_token: Some(generic.lt_token),
+                                lifetimes,
+                                gt_token: Some(generic.gt_token),
+                            },
+                        }));
+                    }
                 }
             }
             PathArguments::Parenthesized(_) => {}
@@ -1072,7 +1174,16 @@ fn parse_type_fn(ty: &TypeBareFn) -> Result<Type> {
                 Some(ident) => ident.0.clone(),
                 None => format_ident!("arg{}", i),
             };
-            Ok(Var { ident, ty })
+            let doc = Doc::new();
+            let attrs = OtherAttrs::none();
+            let visibility = Token![pub](ident.span());
+            Ok(Var {
+                doc,
+                attrs,
+                visibility,
+                ident,
+                ty,
+            })
         })
         .collect::<Result<_>>()?;
 
@@ -1129,6 +1240,15 @@ fn parse_return_type(
         Type::Void(_) => Ok(None),
         ty => Ok(Some(ty)),
     }
+}
+
+fn visibility_pub(vis: &Visibility, inherited: &Ident) -> Token![pub] {
+    Token![pub](match vis {
+        Visibility::Public(vis) => vis.pub_token.span,
+        Visibility::Crate(vis) => vis.crate_token.span,
+        Visibility::Restricted(vis) => vis.pub_token.span,
+        Visibility::Inherited => inherited.span(),
+    })
 }
 
 fn pair(namespace: Namespace, default: &Ident, cxx: Option<Ident>, rust: Option<Ident>) -> Pair {

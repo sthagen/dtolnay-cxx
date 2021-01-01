@@ -1,11 +1,12 @@
 use crate::derive;
 use crate::syntax::atom::Atom::{self, *};
+use crate::syntax::attrs::{self, OtherAttrs};
 use crate::syntax::file::Module;
 use crate::syntax::report::Errors;
 use crate::syntax::symbol::Symbol;
 use crate::syntax::{
-    self, check, mangle, Api, Enum, ExternFn, ExternType, Impl, Pair, RustName, Signature, Struct,
-    Trait, Type, TypeAlias, Types,
+    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, Impl, Pair, RustName, Signature,
+    Struct, Trait, Type, TypeAlias, Types,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
@@ -14,6 +15,17 @@ use syn::{parse_quote, Result, Token};
 
 pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
+
+    let mut doc = Doc::new();
+    let attrs = attrs::parse(
+        errors,
+        mem::take(&mut ffi.attrs),
+        attrs::Parser {
+            doc: Some(&mut doc),
+            ..Default::default()
+        },
+    );
+
     let content = mem::take(&mut ffi.content);
     let trusted = ffi.unsafety.is_some();
     let namespace = &ffi.namespace;
@@ -23,10 +35,10 @@ pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     check::typecheck(errors, apis, types);
     errors.propagate()?;
 
-    Ok(expand(ffi, apis, types))
+    Ok(expand(ffi, doc, attrs, apis, types))
 }
 
-fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
+fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types) -> TokenStream {
     let mut expanded = TokenStream::new();
     let mut hidden = TokenStream::new();
 
@@ -68,7 +80,11 @@ fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
     }
 
     for ty in types {
-        let explicit_impl = types.explicit_impls.get(ty);
+        let impl_key = match ty.impl_key() {
+            Some(impl_key) => impl_key,
+            None => continue,
+        };
+        let explicit_impl = types.explicit_impls.get(&impl_key).copied();
         if let Type::RustBox(ty) = ty {
             if let Type::Ident(ident) = &ty.inner {
                 if Atom::from(&ident.rust).is_none()
@@ -133,15 +149,12 @@ fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
         });
     }
 
-    let attrs = ffi
-        .attrs
-        .into_iter()
-        .filter(|attr| attr.path.is_ident("doc"));
     let vis = &ffi.vis;
     let ident = &ffi.ident;
 
     quote! {
-        #(#attrs)*
+        #doc
+        #attrs
         #[deny(improper_ctypes)]
         #[allow(non_snake_case)]
         #vis mod #ident {
@@ -153,23 +166,34 @@ fn expand(ffi: Module, apis: &[Api], types: &Types) -> TokenStream {
 fn expand_struct(strct: &Struct) -> TokenStream {
     let ident = &strct.name.rust;
     let doc = &strct.doc;
+    let attrs = &strct.attrs;
     let type_id = type_id(&strct.name);
     let fields = strct.fields.iter().map(|field| {
+        let doc = &field.doc;
+        let attrs = &field.attrs;
         // This span on the pub makes "private type in public interface" errors
         // appear in the right place.
-        let vis = Token![pub](field.ident.span());
-        quote!(#vis #field)
+        let vis = field.visibility;
+        quote!(#doc #attrs #vis #field)
     });
     let mut derives = None;
     let derived_traits = derive::expand_struct(strct, &mut derives);
 
-    quote! {
-        #doc
-        #derives
-        #[repr(C)]
-        pub struct #ident {
+    let span = ident.span();
+    let visibility = strct.visibility;
+    let struct_token = strct.struct_token;
+    let struct_def = quote_spanned! {span=>
+        #visibility #struct_token #ident {
             #(#fields,)*
         }
+    };
+
+    quote! {
+        #doc
+        #attrs
+        #derives
+        #[repr(C)]
+        #struct_def
 
         unsafe impl ::cxx::ExternType for #ident {
             type Id = #type_id;
@@ -277,25 +301,43 @@ fn expand_struct_operators(strct: &Struct) -> TokenStream {
 fn expand_enum(enm: &Enum) -> TokenStream {
     let ident = &enm.name.rust;
     let doc = &enm.doc;
+    let attrs = &enm.attrs;
     let repr = enm.repr;
     let type_id = type_id(&enm.name);
     let variants = enm.variants.iter().map(|variant| {
+        let doc = &variant.doc;
+        let attrs = &variant.attrs;
         let variant_ident = &variant.name.rust;
         let discriminant = &variant.discriminant;
-        Some(quote! {
+        let span = variant_ident.span();
+        Some(quote_spanned! {span=>
+            #doc
+            #attrs
             pub const #variant_ident: Self = #ident { repr: #discriminant };
         })
     });
     let mut derives = None;
     let derived_traits = derive::expand_enum(enm, &mut derives);
 
+    let span = ident.span();
+    let visibility = enm.visibility;
+    let struct_token = Token![struct](enm.enum_token.span);
+    let enum_repr = quote! {
+        #[allow(missing_docs)]
+        pub repr: #repr,
+    };
+    let enum_def = quote_spanned! {span=>
+        #visibility #struct_token #ident {
+            #enum_repr
+        }
+    };
+
     quote! {
         #doc
+        #attrs
         #derives
         #[repr(transparent)]
-        pub struct #ident {
-            pub repr: #repr,
-        }
+        #enum_def
 
         #[allow(non_upper_case_globals)]
         impl #ident {
@@ -314,6 +356,7 @@ fn expand_enum(enm: &Enum) -> TokenStream {
 fn expand_cxx_type(ety: &ExternType) -> TokenStream {
     let ident = &ety.name.rust;
     let doc = &ety.doc;
+    let attrs = &ety.attrs;
     let generics = &ety.generics;
     let type_id = type_id(&ety.name);
 
@@ -321,14 +364,25 @@ fn expand_cxx_type(ety: &ExternType) -> TokenStream {
         let field = format_ident!("_lifetime_{}", lifetime.ident);
         quote!(#field: ::std::marker::PhantomData<&#lifetime ()>)
     });
+    let repr_fields = quote! {
+        _private: ::cxx::private::Opaque,
+        #(#lifetime_fields,)*
+    };
+
+    let span = ident.span();
+    let visibility = &ety.visibility;
+    let struct_token = Token![struct](ety.type_token.span);
+    let extern_type_def = quote_spanned! {span=>
+        #visibility #struct_token #ident #generics {
+            #repr_fields
+        }
+    };
 
     quote! {
         #doc
+        #attrs
         #[repr(C)]
-        pub struct #ident #generics {
-            _private: ::cxx::private::Opaque,
-            #(#lifetime_fields,)*
-        }
+        #extern_type_def
 
         unsafe impl #generics ::cxx::ExternType for #ident #generics {
             type Id = #type_id;
@@ -412,6 +466,7 @@ fn expand_cxx_function_decl(efn: &ExternFn, types: &Types) -> TokenStream {
 
 fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     let doc = &efn.doc;
+    let attrs = &efn.attrs;
     let decl = expand_cxx_function_decl(efn, types);
     let receiver = efn.receiver.iter().map(|receiver| {
         let var = receiver.var;
@@ -581,21 +636,26 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
         }
     };
     let mut dispatch = quote!(#setup #expr);
+    let visibility = efn.visibility;
     let unsafety = &efn.sig.unsafety;
     if unsafety.is_none() {
         dispatch = quote!(unsafe { #dispatch });
     }
+    let fn_token = efn.sig.fn_token;
     let ident = &efn.name.rust;
     let generics = &efn.generics;
+    let arg_list = quote_spanned!(efn.sig.paren_token.span=> (#(#all_args,)*));
+    let fn_body = quote_spanned!(efn.semi_token.span=> {
+        extern "C" {
+            #decl
+        }
+        #trampolines
+        #dispatch
+    });
     let function_shim = quote! {
         #doc
-        pub #unsafety fn #ident #generics(#(#all_args,)*) #ret {
-            extern "C" {
-                #decl
-            }
-            #trampolines
-            #dispatch
-        }
+        #attrs
+        #visibility #unsafety #fn_token #ident #generics #arg_list #ret #fn_body
     };
     match &efn.receiver {
         None => function_shim,
@@ -966,12 +1026,19 @@ fn expand_rust_function_shim_super(
 
 fn expand_type_alias(alias: &TypeAlias) -> TokenStream {
     let doc = &alias.doc;
+    let attrs = &alias.attrs;
+    let visibility = alias.visibility;
+    let type_token = alias.type_token;
     let ident = &alias.name.rust;
     let generics = &alias.generics;
+    let eq_token = alias.eq_token;
     let ty = &alias.ty;
+    let semi_token = alias.semi_token;
+
     quote! {
         #doc
-        pub type #ident #generics = #ty;
+        #attrs
+        #visibility #type_token #ident #generics #eq_token #ty #semi_token
     }
 }
 
@@ -1303,7 +1370,6 @@ fn expand_weak_ptr(ident: &RustName, types: &Types, explicit_impl: Option<&Impl>
 }
 
 fn expand_cxx_vector(elem: &RustName, explicit_impl: Option<&Impl>, types: &Types) -> TokenStream {
-    let _ = explicit_impl;
     let name = elem.rust.to_string();
     let prefix = format!("cxxbridge1$std$vector${}$", elem.to_symbol(types));
     let link_size = format!("{}size", prefix);

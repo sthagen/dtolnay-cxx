@@ -1,7 +1,7 @@
 // Functionality that is shared between the cxxbridge macro and the cmd.
 
 pub mod atom;
-mod attrs;
+pub mod attrs;
 pub mod check;
 pub mod derive;
 mod discriminant;
@@ -11,7 +11,9 @@ pub mod file;
 pub mod ident;
 mod impls;
 mod improper;
+pub mod instantiate;
 pub mod mangle;
+pub mod map;
 mod names;
 pub mod namespace;
 mod parse;
@@ -25,6 +27,7 @@ mod toposort;
 pub mod trivial;
 pub mod types;
 
+use self::attrs::OtherAttrs;
 use self::discriminant::Discriminant;
 use self::namespace::Namespace;
 use self::parse::kw;
@@ -72,6 +75,8 @@ pub struct ExternType {
     pub lang: Lang,
     pub doc: Doc,
     pub derives: Vec<Derive>,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub type_token: Token![type],
     pub name: Pair,
     pub generics: Lifetimes,
@@ -84,6 +89,8 @@ pub struct ExternType {
 pub struct Struct {
     pub doc: Doc,
     pub derives: Vec<Derive>,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub struct_token: Token![struct],
     pub name: Pair,
     pub brace_token: Brace,
@@ -93,6 +100,8 @@ pub struct Struct {
 pub struct Enum {
     pub doc: Doc,
     pub derives: Vec<Derive>,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub enum_token: Token![enum],
     pub name: Pair,
     pub brace_token: Brace,
@@ -105,6 +114,8 @@ pub struct Enum {
 pub struct ExternFn {
     pub lang: Lang,
     pub doc: Doc,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub name: Pair,
     pub sig: Signature,
     pub semi_token: Token![;],
@@ -114,6 +125,8 @@ pub struct ExternFn {
 pub struct TypeAlias {
     pub doc: Doc,
     pub derives: Vec<Derive>,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub type_token: Token![type],
     pub name: Pair,
     pub generics: Lifetimes,
@@ -124,6 +137,7 @@ pub struct TypeAlias {
 
 pub struct Impl {
     pub impl_token: Token![impl],
+    pub generics: Lifetimes,
     pub negative: bool,
     pub ty: Type,
     pub brace_token: Brace,
@@ -148,8 +162,10 @@ pub struct Signature {
     pub throws_tokens: Option<(kw::Result, Token![<], Token![>])>,
 }
 
-#[derive(Eq, PartialEq, Hash)]
 pub struct Var {
+    pub doc: Doc,
+    pub attrs: OtherAttrs,
+    pub visibility: Token![pub],
     pub ident: Ident,
     pub ty: Type,
 }
@@ -167,6 +183,8 @@ pub struct Receiver {
 }
 
 pub struct Variant {
+    pub doc: Doc,
+    pub attrs: OtherAttrs,
     pub name: Pair,
     pub discriminant: Discriminant,
     pub expr: Option<Expr>,
@@ -239,8 +257,8 @@ pub struct Pair {
 
 // Wrapper for a type which needs to be resolved before it can be printed in
 // C++.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
+#[derive(PartialEq, Eq, Hash)]
 pub struct RustName {
     pub rust: Ident,
+    pub generics: Lifetimes,
 }

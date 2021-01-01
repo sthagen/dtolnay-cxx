@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.24")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.25")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -385,7 +385,8 @@
     clippy::or_fun_call,
     clippy::ptr_arg,
     clippy::toplevel_ref_arg,
-    clippy::useless_let_if_seq
+    clippy::useless_let_if_seq,
+    clippy::wrong_self_convention
 )]
 
 #[cfg(built_with_cargo)]
