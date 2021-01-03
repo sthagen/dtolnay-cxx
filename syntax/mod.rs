@@ -20,6 +20,7 @@ mod parse;
 mod pod;
 pub mod qualified;
 pub mod report;
+mod resolve;
 pub mod set;
 pub mod symbol;
 mod tokens;
@@ -40,6 +41,7 @@ use syn::{Expr, Generics, Lifetime, LitInt, Token, Type as RustType};
 pub use self::atom::Atom;
 pub use self::derive::{Derive, Trait};
 pub use self::doc::Doc;
+pub use self::names::ForeignName;
 pub use self::parse::parse_items;
 pub use self::types::Types;
 
@@ -93,6 +95,7 @@ pub struct Struct {
     pub visibility: Token![pub],
     pub struct_token: Token![struct],
     pub name: Pair,
+    pub generics: Lifetimes,
     pub brace_token: Brace,
     pub fields: Vec<Var>,
 }
@@ -104,6 +107,7 @@ pub struct Enum {
     pub visibility: Token![pub],
     pub enum_token: Token![enum],
     pub name: Pair,
+    pub generics: Lifetimes,
     pub brace_token: Brace,
     pub variants: Vec<Variant>,
     pub repr: Atom,
@@ -137,13 +141,15 @@ pub struct TypeAlias {
 
 pub struct Impl {
     pub impl_token: Token![impl],
-    pub generics: Lifetimes,
+    pub impl_generics: Lifetimes,
     pub negative: bool,
     pub ty: Type,
+    pub ty_generics: Lifetimes,
     pub brace_token: Brace,
     pub negative_token: Option<Token![!]>,
 }
 
+#[derive(Clone, Default)]
 pub struct Lifetimes {
     pub lt_token: Option<Token![<]>,
     pub lifetimes: Punctuated<Lifetime, Token![,]>,
@@ -166,7 +172,7 @@ pub struct Var {
     pub doc: Doc,
     pub attrs: OtherAttrs,
     pub visibility: Token![pub],
-    pub ident: Ident,
+    pub name: Pair,
     pub ty: Type,
 }
 
@@ -176,7 +182,7 @@ pub struct Receiver {
     pub lifetime: Option<Lifetime>,
     pub mutable: bool,
     pub var: Token![self],
-    pub ty: RustName,
+    pub ty: NamedType,
     pub shorthand: bool,
     pub pin_tokens: Option<(kw::Pin, Token![<], Token![>])>,
     pub mutability: Option<Token![mut]>,
@@ -191,7 +197,7 @@ pub struct Variant {
 }
 
 pub enum Type {
-    Ident(RustName),
+    Ident(NamedType),
     RustBox(Box<Ty1>),
     RustVec(Box<Ty1>),
     UniquePtr(Box<Ty1>),
@@ -251,14 +257,14 @@ pub enum Lang {
 #[derive(Clone)]
 pub struct Pair {
     pub namespace: Namespace,
-    pub cxx: Ident,
+    pub cxx: ForeignName,
     pub rust: Ident,
 }
 
 // Wrapper for a type which needs to be resolved before it can be printed in
 // C++.
 #[derive(PartialEq, Eq, Hash)]
-pub struct RustName {
+pub struct NamedType {
     pub rust: Ident,
     pub generics: Lifetimes,
 }

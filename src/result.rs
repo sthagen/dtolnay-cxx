@@ -1,16 +1,22 @@
 use crate::exception::Exception;
-use crate::rust_str::RustStr;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use core::fmt::Display;
-use core::ptr;
+use core::ptr::{self, NonNull};
 use core::result::Result as StdResult;
 use core::slice;
 use core::str;
 
 #[repr(C)]
+#[derive(Copy, Clone)]
+struct PtrLen {
+    ptr: NonNull<u8>,
+    len: usize,
+}
+
+#[repr(C)]
 pub union Result {
-    err: RustStr,
+    err: PtrLen,
     ok: *const u8, // null
 }
 
@@ -35,13 +41,11 @@ unsafe fn to_c_error(msg: String) -> Result {
 
     extern "C" {
         #[link_name = "cxxbridge1$error"]
-        fn error(ptr: *const u8, len: usize) -> *const u8;
+        fn error(ptr: *const u8, len: usize) -> NonNull<u8>;
     }
 
     let copy = error(ptr, len);
-    let slice = slice::from_raw_parts(copy, len);
-    let string = str::from_utf8_unchecked(slice);
-    let err = RustStr::from(string);
+    let err = PtrLen { ptr: copy, len };
     Result { err }
 }
 

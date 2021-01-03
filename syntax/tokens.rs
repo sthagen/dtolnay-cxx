@@ -1,6 +1,6 @@
 use crate::syntax::atom::Atom::*;
 use crate::syntax::{
-    Array, Atom, Derive, Enum, ExternFn, ExternType, Impl, Lifetimes, Receiver, Ref, RustName,
+    Array, Atom, Derive, Enum, ExternFn, ExternType, Impl, Lifetimes, NamedType, Receiver, Ref,
     Signature, SliceRef, Struct, Ty1, Type, TypeAlias, Var,
 };
 use proc_macro2::{Ident, Span, TokenStream};
@@ -41,11 +41,11 @@ impl ToTokens for Var {
             doc: _,
             attrs: _,
             visibility: _,
-            ident,
+            name,
             ty,
         } = self;
-        ident.to_tokens(tokens);
-        Token![:](ident.span()).to_tokens(tokens);
+        name.rust.to_tokens(tokens);
+        Token![:](name.rust.span()).to_tokens(tokens);
         ty.to_tokens(tokens);
     }
 }
@@ -153,6 +153,7 @@ impl ToTokens for ExternType {
         // Notional token range for error reporting purposes.
         self.type_token.to_tokens(tokens);
         self.name.rust.to_tokens(tokens);
+        self.generics.to_tokens(tokens);
     }
 }
 
@@ -161,6 +162,7 @@ impl ToTokens for TypeAlias {
         // Notional token range for error reporting purposes.
         self.type_token.to_tokens(tokens);
         self.name.rust.to_tokens(tokens);
+        self.generics.to_tokens(tokens);
     }
 }
 
@@ -169,6 +171,7 @@ impl ToTokens for Struct {
         // Notional token range for error reporting purposes.
         self.struct_token.to_tokens(tokens);
         self.name.rust.to_tokens(tokens);
+        self.generics.to_tokens(tokens);
     }
 }
 
@@ -177,6 +180,7 @@ impl ToTokens for Enum {
         // Notional token range for error reporting purposes.
         self.enum_token.to_tokens(tokens);
         self.name.rust.to_tokens(tokens);
+        self.generics.to_tokens(tokens);
     }
 }
 
@@ -192,14 +196,15 @@ impl ToTokens for Impl {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Impl {
             impl_token,
-            generics,
+            impl_generics,
             negative: _,
             ty,
+            ty_generics: _,
             brace_token,
             negative_token,
         } = self;
         impl_token.to_tokens(tokens);
-        generics.to_tokens(tokens);
+        impl_generics.to_tokens(tokens);
         negative_token.to_tokens(tokens);
         ty.to_tokens(tokens);
         brace_token.surround(tokens, |_tokens| {});
@@ -256,9 +261,9 @@ impl ToTokens for Signature {
     }
 }
 
-impl ToTokens for RustName {
+impl ToTokens for NamedType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let RustName { rust, generics } = self;
+        let NamedType { rust, generics } = self;
         rust.to_tokens(tokens);
         generics.to_tokens(tokens);
     }

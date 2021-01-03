@@ -64,9 +64,8 @@ rust::Box<R> c_return_box() {
   Shared shared{0};
   rust::Box<Shared> box{shared}; // explicit constructor from const T&
   rust::Box<Shared> other{std::move(shared)}; // explicit constructor from T&&
-  box = other;                                // copy assignment
   box = std::move(other);                     // move assignment
-  rust::Box<Shared> box2(box);                // copy constructor
+  rust::Box<Shared> box2(*box);               // copy from another Box
   rust::Box<Shared> other2(std::move(other)); // move constructor
   rust::Box<Shared>::in_place(shared.z);      // placement static factory
   rust::Box<Shared>::in_place<size_t>(0);
@@ -206,6 +205,12 @@ Enum c_return_enum(uint16_t n) {
   } else {
     return ::A::B::ABEnum::ABCVal;
   }
+}
+
+Borrow::Borrow(const std::string &s) : s(s) {}
+
+std::unique_ptr<Borrow> c_return_borrow(const std::string &s) {
+  return std::unique_ptr<Borrow>(new Borrow(s));
 }
 
 void c_take_primitive(size_t n) {
@@ -752,8 +757,13 @@ extern "C" const char *cxx_run_test() noexcept {
   ASSERT(r->get() == 2020);
   ASSERT(r->set(2021) == 2021);
   ASSERT(r->get() == 2021);
-  ASSERT(r->set(2020) == 2020);
+
+  using std::swap;
+  auto r2 = r_return_box();
+  swap(r, r2);
   ASSERT(r->get() == 2020);
+  ASSERT(r2->get() == 2021);
+
   ASSERT(std::string(Shared{0}.r_method_on_shared()) == "2020");
 
   ASSERT(std::string(rAliasedFunction(2020)) == "2020");
@@ -785,6 +795,23 @@ extern "C" const char *cxx_run_test() noexcept {
   ASSERT(strncmp(cstring.data(), "test", 4) == 0);
   ASSERT(strncmp(cstring.c_str(), "test", 5) == 0);
   ASSERT(cstring.length() == 4);
+
+  rust::String other_cstring = "foo";
+  swap(cstring, other_cstring);
+  ASSERT(cstring == "foo");
+  ASSERT(other_cstring == "test");
+
+  rust::Str cstr = "test";
+  rust::Str other_cstr = "foo";
+  swap(cstr, other_cstr);
+  ASSERT(cstr == "foo");
+  ASSERT(other_cstr == "test");
+
+  rust::Vec<int> vec1{1, 2};
+  rust::Vec<int> vec2{3, 4};
+  swap(vec1, vec2);
+  ASSERT(vec1[0] == 3 && vec1[1] == 4);
+  ASSERT(vec2[0] == 1 && vec2[1] == 2);
 
   cxx_test_suite_set_correct();
   return nullptr;
@@ -819,3 +846,25 @@ std::unique_ptr<I> ns_c_return_unique_ptr_ns() {
   return std::unique_ptr<I>(new I());
 }
 } // namespace I
+
+// Instantiate any remaining class member functions not already covered above.
+// This is an easy way to at least typecheck anything missed by unit tests.
+// https://en.cppreference.com/w/cpp/language/class_template#Explicit_instantiation
+// > When an explicit instantiation names a class template specialization, it
+// > serves as an explicit instantiation of the same kind (declaration or
+// > definition) of each of its non-inherited non-template members that has not
+// > been previously explicitly specialized in the translation unit.
+#if defined(CXX_TEST_INSTANTIATIONS)
+template class rust::Box<tests::Shared>;
+template class rust::Slice<const char>;
+template class rust::Slice<const uint8_t>;
+template class rust::Slice<uint8_t>;
+template class rust::Slice<const tests::Shared>;
+template class rust::Slice<tests::Shared>;
+template class rust::Slice<const tests::R>;
+template class rust::Slice<tests::R>;
+template class rust::Vec<uint8_t>;
+template class rust::Vec<rust::String>;
+template class rust::Vec<tests::Shared>;
+template class rust::Fn<size_t(rust::String)>;
+#endif

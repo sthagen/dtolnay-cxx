@@ -4,9 +4,9 @@ use crate::syntax::file::{Item, ItemForeignMod};
 use crate::syntax::report::Errors;
 use crate::syntax::Atom::*;
 use crate::syntax::{
-    attrs, error, Api, Array, Derive, Doc, Enum, ExternFn, ExternType, Impl, Include, IncludeKind,
-    Lang, Lifetimes, Namespace, Pair, Receiver, Ref, RustName, Signature, SliceRef, Struct, Ty1,
-    Type, TypeAlias, Var, Variant,
+    attrs, error, Api, Array, Derive, Doc, Enum, ExternFn, ExternType, ForeignName, Impl, Include,
+    IncludeKind, Lang, Lifetimes, NamedType, Namespace, Pair, Receiver, Ref, Signature, SliceRef,
+    Struct, Ty1, Type, TypeAlias, Var, Variant,
 };
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
@@ -39,10 +39,7 @@ pub fn parse_items(
                 Ok(strct) => apis.push(strct),
                 Err(err) => cx.push(err),
             },
-            Item::Enum(item) => match parse_enum(cx, item, namespace) {
-                Ok(enm) => apis.push(enm),
-                Err(err) => cx.push(err),
-            },
+            Item::Enum(item) => apis.push(parse_enum(cx, item, namespace)),
             Item::ForeignMod(foreign_mod) => {
                 parse_foreign_mod(cx, foreign_mod, &mut apis, trusted, namespace)
             }
@@ -76,18 +73,6 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
         },
     );
 
-    let generics = &item.generics;
-    if !generics.params.is_empty() || generics.where_clause.is_some() {
-        let struct_token = item.struct_token;
-        let ident = &item.ident;
-        let where_clause = &generics.where_clause;
-        let span = quote!(#struct_token #ident #generics #where_clause);
-        return Err(Error::new_spanned(
-            span,
-            "struct with generic parameters is not supported yet",
-        ));
-    }
-
     let named_fields = match item.fields {
         Fields::Named(fields) => fields,
         Fields::Unit => return Err(Error::new_spanned(item, "unit structs are not supported")),
@@ -96,15 +81,59 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
         }
     };
 
+    let mut lifetimes = Punctuated::new();
+    let mut has_unsupported_generic_param = false;
+    for pair in item.generics.params.into_pairs() {
+        let (param, punct) = pair.into_tuple();
+        match param {
+            GenericParam::Lifetime(param) => {
+                if !param.bounds.is_empty() && !has_unsupported_generic_param {
+                    let msg = "lifetime parameter with bounds is not supported yet";
+                    cx.error(&param, msg);
+                    has_unsupported_generic_param = true;
+                }
+                lifetimes.push_value(param.lifetime);
+                if let Some(punct) = punct {
+                    lifetimes.push_punct(punct);
+                }
+            }
+            GenericParam::Type(param) => {
+                if !has_unsupported_generic_param {
+                    let msg = "struct with generic type parameter is not supported yet";
+                    cx.error(&param, msg);
+                    has_unsupported_generic_param = true;
+                }
+            }
+            GenericParam::Const(param) => {
+                if !has_unsupported_generic_param {
+                    let msg = "struct with const generic parameter is not supported yet";
+                    cx.error(&param, msg);
+                    has_unsupported_generic_param = true;
+                }
+            }
+        }
+    }
+
+    if let Some(where_clause) = &item.generics.where_clause {
+        cx.error(
+            where_clause,
+            "struct with where-clause is not supported yet",
+        );
+    }
+
     let mut fields = Vec::new();
     for field in named_fields.named {
         let ident = field.ident.unwrap();
         let mut doc = Doc::new();
+        let mut cxx_name = None;
+        let mut rust_name = None;
         let attrs = attrs::parse(
             cx,
             field.attrs,
             attrs::Parser {
                 doc: Some(&mut doc),
+                cxx_name: Some(&mut cxx_name),
+                rust_name: Some(&mut rust_name),
                 ..Default::default()
             },
         );
@@ -116,11 +145,12 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
             }
         };
         let visibility = visibility_pub(&field.vis, &ident);
+        let name = pair(Namespace::default(), &ident, cxx_name, rust_name);
         fields.push(Var {
             doc,
             attrs,
             visibility,
-            ident,
+            name,
             ty,
         });
     }
@@ -128,6 +158,11 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
     let visibility = visibility_pub(&item.vis, &item.ident);
     let struct_token = item.struct_token;
     let name = pair(namespace, &item.ident, cxx_name, rust_name);
+    let generics = Lifetimes {
+        lt_token: item.generics.lt_token,
+        lifetimes,
+        gt_token: item.generics.gt_token,
+    };
     let brace_token = named_fields.brace_token;
 
     Ok(Api::Struct(Struct {
@@ -137,12 +172,13 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
         visibility,
         struct_token,
         name,
+        generics,
         brace_token,
         fields,
     }))
 }
 
-fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<Api> {
+fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Api {
     let mut doc = Doc::new();
     let mut derives = Vec::new();
     let mut repr = None;
@@ -163,16 +199,15 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
         },
     );
 
-    let generics = &item.generics;
-    if !generics.params.is_empty() || generics.where_clause.is_some() {
+    if !item.generics.params.is_empty() {
+        let vis = &item.vis;
         let enum_token = item.enum_token;
         let ident = &item.ident;
-        let where_clause = &generics.where_clause;
-        let span = quote!(#enum_token #ident #generics #where_clause);
-        return Err(Error::new_spanned(
-            span,
-            "enums with generic parameters are not allowed",
-        ));
+        let generics = &item.generics;
+        let span = quote!(#vis #enum_token #ident #generics);
+        cx.error(span, "enum with generic parameters is not supported");
+    } else if let Some(where_clause) = &item.generics.where_clause {
+        cx.error(where_clause, "enum with where-clause is not supported");
     }
 
     let mut variants = Vec::new();
@@ -201,21 +236,27 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Result<
 
     let name = pair(namespace, &item.ident, cxx_name, rust_name);
     let repr_ident = Ident::new(repr.as_ref(), Span::call_site());
-    let repr_type = Type::Ident(RustName::new(repr_ident));
+    let repr_type = Type::Ident(NamedType::new(repr_ident));
+    let generics = Lifetimes {
+        lt_token: None,
+        lifetimes: Punctuated::new(),
+        gt_token: None,
+    };
 
-    Ok(Api::Enum(Enum {
+    Api::Enum(Enum {
         doc,
         derives,
         attrs,
         visibility,
         enum_token,
         name,
+        generics,
         brace_token,
         variants,
         repr,
         repr_type,
         explicit_repr,
-    }))
+    })
 }
 
 fn parse_variant(
@@ -519,7 +560,7 @@ fn parse_extern_fn(
                         lifetime: lifetime.clone(),
                         mutable: arg.mutability.is_some(),
                         var: arg.self_token,
-                        ty: RustName::new(Ident::new("Self", arg.self_token.span)),
+                        ty: NamedType::new(Ident::new("Self", arg.self_token.span)),
                         shorthand: true,
                         pin_tokens: None,
                         mutability: arg.mutability,
@@ -541,11 +582,12 @@ fn parse_extern_fn(
                     let doc = Doc::new();
                     let attrs = OtherAttrs::none();
                     let visibility = Token![pub](ident.span());
+                    let name = pair(Namespace::default(), &ident, None, None);
                     args.push_value(Var {
                         doc,
                         attrs,
                         visibility,
-                        ident,
+                        name,
                         ty,
                     });
                     if let Some(comma) = comma {
@@ -850,7 +892,7 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
             "where-clause on an impl is not supported yet",
         ));
     }
-    let mut generics = Lifetimes {
+    let mut impl_generics = Lifetimes {
         lt_token: imp.generics.lt_token,
         lifetimes: Punctuated::new(),
         gt_token: imp.generics.gt_token,
@@ -859,13 +901,13 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         let (param, punct) = pair.into_tuple();
         match param {
             GenericParam::Lifetime(def) if def.bounds.is_empty() => {
-                generics.lifetimes.push_value(def.lifetime);
+                impl_generics.lifetimes.push_value(def.lifetime);
                 if let Some(punct) = punct {
-                    generics.lifetimes.push_punct(punct);
+                    impl_generics.lifetimes.push_punct(punct);
                 }
             }
             _ => {
-                let span = quote!(#impl_token #generics);
+                let span = quote!(#impl_token #impl_generics);
                 return Err(Error::new_spanned(
                     span,
                     "generic parameter on an impl is not supported yet",
@@ -889,15 +931,35 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         }
     }
 
-    let negative = negative_token.is_some();
     let ty = parse_type(&self_ty)?;
+    let ty_generics = match &ty {
+        Type::RustBox(ty)
+        | Type::RustVec(ty)
+        | Type::UniquePtr(ty)
+        | Type::SharedPtr(ty)
+        | Type::WeakPtr(ty)
+        | Type::CxxVector(ty) => match &ty.inner {
+            Type::Ident(ident) => ident.generics.clone(),
+            _ => Lifetimes::default(),
+        },
+        Type::Ident(_)
+        | Type::Ref(_)
+        | Type::Str(_)
+        | Type::Fn(_)
+        | Type::Void(_)
+        | Type::SliceRef(_)
+        | Type::Array(_) => Lifetimes::default(),
+    };
+
+    let negative = negative_token.is_some();
     let brace_token = imp.brace_token;
 
     Ok(Api::Impl(Impl {
         impl_token,
-        generics,
+        impl_generics,
         negative,
         ty,
+        ty_generics,
         brace_token,
         negative_token,
     }))
@@ -1007,7 +1069,7 @@ fn parse_type_path(ty: &TypePath) -> Result<Type> {
         let segment = &path.segments[0];
         let ident = segment.ident.clone();
         match &segment.arguments {
-            PathArguments::None => return Ok(Type::Ident(RustName::new(ident))),
+            PathArguments::None => return Ok(Type::Ident(NamedType::new(ident))),
             PathArguments::AngleBracketed(generic) => {
                 if ident == "UniquePtr" && generic.args.len() == 1 {
                     if let GenericArgument::Type(arg) = &generic.args[0] {
@@ -1096,7 +1158,7 @@ fn parse_type_path(ty: &TypePath) -> Result<Type> {
                         }
                     }
                     if only_lifetimes {
-                        return Ok(Type::Ident(RustName {
+                        return Ok(Type::Ident(NamedType {
                             rust: ident,
                             generics: Lifetimes {
                                 lt_token: Some(generic.lt_token),
@@ -1177,11 +1239,12 @@ fn parse_type_fn(ty: &TypeBareFn) -> Result<Type> {
             let doc = Doc::new();
             let attrs = OtherAttrs::none();
             let visibility = Token![pub](ident.span());
+            let name = pair(Namespace::default(), &ident, None, None);
             Ok(Var {
                 doc,
                 attrs,
                 visibility,
-                ident,
+                name,
                 ty,
             })
         })
@@ -1251,11 +1314,16 @@ fn visibility_pub(vis: &Visibility, inherited: &Ident) -> Token![pub] {
     })
 }
 
-fn pair(namespace: Namespace, default: &Ident, cxx: Option<Ident>, rust: Option<Ident>) -> Pair {
-    let default = || default.clone();
+fn pair(
+    namespace: Namespace,
+    default: &Ident,
+    cxx: Option<ForeignName>,
+    rust: Option<Ident>,
+) -> Pair {
     Pair {
         namespace,
-        cxx: cxx.unwrap_or_else(default),
-        rust: rust.unwrap_or_else(default),
+        cxx: cxx
+            .unwrap_or_else(|| ForeignName::parse(&default.to_string(), default.span()).unwrap()),
+        rust: rust.unwrap_or_else(|| default.clone()),
     }
 }

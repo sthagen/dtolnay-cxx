@@ -1,6 +1,6 @@
 [package]
 name = "cxxbridge-macro"
-version = "1.0.25"
+version = "1.0.26"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -17,7 +17,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0"
 quote = "1.0.4"
-syn = { version = "1.0.53", features = ["full"] }
+syn = { version = "1.0.57", features = ["full"] }
 
 [dev-dependencies]
 cxx = { version = "1.0", path = ".." }

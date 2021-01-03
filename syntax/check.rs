@@ -1,8 +1,8 @@
 use crate::syntax::atom::Atom::{self, *};
 use crate::syntax::report::Errors;
 use crate::syntax::{
-    error, ident, trivial, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, Receiver, Ref,
-    RustName, Signature, SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
+    error, ident, trivial, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, NamedType, Receiver,
+    Ref, Signature, SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
 };
 use proc_macro2::{Delimiter, Group, Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -61,7 +61,7 @@ impl Check<'_> {
     }
 }
 
-fn check_type_ident(cx: &mut Check, name: &RustName) {
+fn check_type_ident(cx: &mut Check, name: &NamedType) {
     let ident = &name.rust;
     if Atom::from(ident).is_none()
         && !cx.types.structs.contains_key(ident)
@@ -71,11 +71,6 @@ fn check_type_ident(cx: &mut Check, name: &RustName) {
     {
         let msg = format!("unsupported type: {}", ident);
         cx.error(ident, &msg);
-        return;
-    }
-
-    if !name.generics.lifetimes.is_empty() {
-        cx.error(name, "type with lifetime parameter is not supported yet");
     }
 }
 
@@ -234,11 +229,11 @@ fn check_type_ref(cx: &mut Check, ty: &Ref) {
 }
 
 fn check_type_slice_ref(cx: &mut Check, ty: &SliceRef) {
-    let supported = match &ty.inner {
-        Type::Str(_) | Type::SliceRef(_) => false,
-        Type::Ident(ident) => !is_opaque_cxx(cx, &ident.rust),
-        element => !is_unsized(cx, element),
-    };
+    let supported = !is_unsized(cx, &ty.inner)
+        || match &ty.inner {
+            Type::Ident(ident) => cx.types.rust.contains(&ident.rust),
+            _ => false,
+        };
 
     if !supported {
         let mutable = if ty.mutable { "mut " } else { "" };
@@ -253,10 +248,7 @@ fn check_type_slice_ref(cx: &mut Check, ty: &SliceRef) {
 }
 
 fn check_type_array(cx: &mut Check, ty: &Array) {
-    let supported = match &ty.inner {
-        Type::Str(_) | Type::SliceRef(_) => false,
-        element => !is_unsized(cx, element),
-    };
+    let supported = !is_unsized(cx, &ty.inner);
 
     if !supported {
         cx.error(ty, "unsupported array element type");
@@ -341,10 +333,6 @@ fn check_api_type(cx: &mut Check, ety: &ExternType) {
             derive, lang,
         );
         cx.error(derive, msg);
-    }
-
-    if let Some(lifetime) = ety.generics.lifetimes.first() {
-        cx.error(lifetime, "extern type with lifetimes is not supported yet");
     }
 
     if !ety.bounds.is_empty() {
@@ -449,10 +437,6 @@ fn check_api_type_alias(cx: &mut Check, alias: &TypeAlias) {
     for derive in &alias.derives {
         let msg = format!("derive({}) on extern type alias is not supported", derive);
         cx.error(derive, msg);
-    }
-
-    if let Some(lifetime) = alias.generics.lifetimes.first() {
-        cx.error(lifetime, "extern type with lifetimes is not supported yet");
     }
 }
 

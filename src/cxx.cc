@@ -39,7 +39,18 @@ std::size_t cxxbridge1$string$len(const rust::String *self) noexcept;
 void cxxbridge1$string$reserve_total(rust::String *self, size_t cap) noexcept;
 
 // rust::Str
-bool cxxbridge1$str$valid(const char *ptr, std::size_t len) noexcept;
+void cxxbridge1$str$new(rust::Str *self) noexcept;
+void cxxbridge1$str$ref(rust::Str *self, const rust::String *string) noexcept;
+bool cxxbridge1$str$from(rust::Str *self, const char *ptr,
+                         std::size_t len) noexcept;
+const char *cxxbridge1$str$ptr(const rust::Str *self) noexcept;
+std::size_t cxxbridge1$str$len(const rust::Str *self) noexcept;
+
+// rust::Slice
+void cxxbridge1$slice$new(void *self, const void *ptr,
+                          std::size_t len) noexcept;
+void *cxxbridge1$slice$ptr(const void *self) noexcept;
+std::size_t cxxbridge1$slice$len(const void *self) noexcept;
 } // extern "C"
 
 namespace rust {
@@ -172,6 +183,11 @@ bool String::operator>=(const String &rhs) const noexcept {
   return rust::Str(*this) >= rust::Str(rhs);
 }
 
+void String::swap(String &rhs) noexcept {
+  using std::swap;
+  swap(this->repr, rhs.repr);
+}
+
 String::String(unsafe_bitcopy_t, const String &bits) noexcept
     : repr(bits.repr) {}
 
@@ -180,46 +196,52 @@ std::ostream &operator<<(std::ostream &os, const String &s) {
   return os;
 }
 
-Str::Str() noexcept : ptr(reinterpret_cast<const char *>(1)), len(0) {}
+Str::Str() noexcept { cxxbridge1$str$new(this); }
 
-Str::Str(const String &s) noexcept : ptr(s.data()), len(s.length()) {}
+Str::Str(const String &s) noexcept { cxxbridge1$str$ref(this, &s); }
 
-static void initStr(const char *ptr, std::size_t len) {
-  if (!cxxbridge1$str$valid(ptr, len)) {
+static void initStr(Str *self, const char *ptr, std::size_t len) {
+  if (!cxxbridge1$str$from(self, ptr, len)) {
     panic<std::invalid_argument>("data for rust::Str is not utf-8");
   }
 }
 
-Str::Str(const std::string &s) : ptr(s.data()), len(s.length()) {
-  initStr(this->ptr, this->len);
-}
+Str::Str(const std::string &s) { initStr(this, s.data(), s.length()); }
 
-Str::Str(const char *s) : ptr(s), len(std::strlen(s)) {
+Str::Str(const char *s) {
   assert(s != nullptr);
-  initStr(this->ptr, this->len);
+  initStr(this, s, std::strlen(s));
 }
 
-Str::Str(const char *s, std::size_t len)
-    : ptr(s == nullptr && len == 0 ? reinterpret_cast<const char *>(1) : s),
-      len(len) {
+Str::Str(const char *s, std::size_t len) {
   assert(s != nullptr || len == 0);
-  initStr(this->ptr, this->len);
+  initStr(this,
+          s == nullptr && len == 0 ? reinterpret_cast<const char *>(1) : s,
+          len);
 }
 
 Str::operator std::string() const {
   return std::string(this->data(), this->size());
 }
 
+const char *Str::data() const noexcept { return cxxbridge1$str$ptr(this); }
+
+std::size_t Str::size() const noexcept { return cxxbridge1$str$len(this); }
+
+std::size_t Str::length() const noexcept { return this->size(); }
+
 Str::const_iterator Str::begin() const noexcept { return this->cbegin(); }
 
 Str::const_iterator Str::end() const noexcept { return this->cend(); }
 
-Str::const_iterator Str::cbegin() const noexcept { return this->ptr; }
+Str::const_iterator Str::cbegin() const noexcept { return this->data(); }
 
-Str::const_iterator Str::cend() const noexcept { return this->ptr + this->len; }
+Str::const_iterator Str::cend() const noexcept {
+  return this->data() + this->size();
+}
 
 bool Str::operator==(const Str &rhs) const noexcept {
-  return this->len == rhs.len &&
+  return this->size() == rhs.size() &&
          std::equal(this->begin(), this->end(), rhs.begin());
 }
 
@@ -251,9 +273,24 @@ bool Str::operator>(const Str &rhs) const noexcept { return rhs < *this; }
 
 bool Str::operator>=(const Str &rhs) const noexcept { return rhs <= *this; }
 
+void Str::swap(Str &rhs) noexcept {
+  using std::swap;
+  swap(this->repr, rhs.repr);
+}
+
 std::ostream &operator<<(std::ostream &os, const Str &s) {
   os.write(s.data(), s.size());
   return os;
+}
+
+void sliceInit(void *self, const void *ptr, std::size_t len) noexcept {
+  cxxbridge1$slice$new(self, ptr, len);
+}
+
+void *slicePtr(const void *self) noexcept { return cxxbridge1$slice$ptr(self); }
+
+std::size_t sliceLen(const void *self) noexcept {
+  return cxxbridge1$slice$len(self);
 }
 
 // Rust specifies that usize is ABI compatible with C's uintptr_t.
@@ -316,16 +353,21 @@ static_assert(!std::is_same<Vec<std::uint8_t>::const_iterator,
                             Vec<std::uint8_t>::iterator>::value,
               "Vec<T>::const_iterator != Vec<T>::iterator");
 
-extern "C" {
-const char *cxxbridge1$error(const char *ptr, std::size_t len) {
+static const char *errorCopy(const char *ptr, std::size_t len) {
   char *copy = new char[len];
-  std::strncpy(copy, ptr, len);
+  std::memcpy(copy, ptr, len);
   return copy;
+}
+
+extern "C" {
+const char *cxxbridge1$error(const char *ptr, std::size_t len) noexcept {
+  return errorCopy(ptr, len);
 }
 } // extern "C"
 
 Error::Error(const Error &other)
-    : std::exception(other), msg(cxxbridge1$error(other.msg, other.len)),
+    : std::exception(other),
+      msg(other.msg ? errorCopy(other.msg, other.len) : nullptr),
       len(other.len) {}
 
 Error::Error(Error &&other) noexcept
@@ -341,8 +383,10 @@ Error &Error::operator=(const Error &other) {
     std::exception::operator=(other);
     delete[] this->msg;
     this->msg = nullptr;
-    this->msg = cxxbridge1$error(other.msg, other.len);
-    this->len = other.len;
+    if (other.msg) {
+      this->msg = errorCopy(other.msg, other.len);
+      this->len = other.len;
+    }
   }
   return *this;
 }

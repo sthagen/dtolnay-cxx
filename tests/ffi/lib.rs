@@ -3,6 +3,7 @@
     clippy::just_underscores_and_digits,
     clippy::let_underscore_drop,
     clippy::must_use_candidate,
+    clippy::needless_lifetimes,
     clippy::needless_pass_by_value,
     clippy::ptr_arg,
     clippy::trivially_copy_pass_by_ref,
@@ -78,6 +79,11 @@ pub mod ffi {
 
     pub struct Array {
         a: [i32; 4],
+    }
+
+    #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct StructWithLifetime<'a> {
+        s: &'a str,
     }
 
     unsafe extern "C++" {
@@ -202,6 +208,20 @@ pub mod ffi {
 
         type COwnedEnum;
         type Job = crate::module::ffi::Job;
+    }
+
+    extern "Rust" {
+        #[derive(ExternType)]
+        type Reference<'a>;
+    }
+
+    unsafe extern "C++" {
+        type Borrow<'a>;
+
+        fn c_return_borrow<'a>(s: &'a CxxString) -> UniquePtr<Borrow<'a>>;
+
+        #[rust_name = "c_return_borrow_elided"]
+        fn c_return_borrow(s: &CxxString) -> UniquePtr<Borrow>;
     }
 
     #[repr(u32)]
@@ -361,6 +381,8 @@ impl R {
         n
     }
 }
+
+pub struct Reference<'a>(&'a String);
 
 impl ffi::Shared {
     fn r_method_on_shared(&self) -> String {

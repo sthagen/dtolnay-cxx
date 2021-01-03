@@ -7,8 +7,12 @@ fn main() {
 
     CFG.include_prefix = "tests/ffi";
     let sources = vec!["lib.rs", "module.rs"];
-    cxx_build::bridges(sources)
-        .file("tests.cc")
-        .flag_if_supported(cxxbridge_flags::STD)
-        .compile("cxx-test-suite");
+    let mut build = cxx_build::bridges(sources);
+    build.file("tests.cc");
+    build.flag_if_supported(cxxbridge_flags::STD);
+    build.warnings_into_errors(cfg!(deny_warnings));
+    if cfg!(not(target_env = "msvc")) {
+        build.define("CXX_TEST_INSTANTIATIONS", None);
+    }
+    build.compile("cxx-test-suite");
 }

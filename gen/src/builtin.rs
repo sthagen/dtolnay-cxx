@@ -20,6 +20,7 @@ pub struct Builtins<'a> {
     pub maybe_uninit: bool,
     pub trycatch: bool,
     pub ptr_len: bool,
+    pub repr_fat: bool,
     pub rust_str_new_unchecked: bool,
     pub rust_str_repr: bool,
     pub rust_slice_new: bool,
@@ -165,6 +166,20 @@ pub(super) fn write(out: &mut OutFile) {
     ifndef::write(out, builtin.layout, "CXXBRIDGE1_LAYOUT");
     ifndef::write(out, builtin.relocatable, "CXXBRIDGE1_RELOCATABLE");
 
+    if builtin.rust_str_new_unchecked {
+        out.next_section();
+        writeln!(out, "class Str::uninit {{}};");
+        writeln!(out, "inline Str::Str(uninit) noexcept {{}}");
+    }
+
+    if builtin.rust_slice_new {
+        out.next_section();
+        writeln!(out, "template <typename T>");
+        writeln!(out, "class Slice<T>::uninit {{}};");
+        writeln!(out, "template <typename T>");
+        writeln!(out, "inline Slice<T>::Slice(uninit) noexcept {{}}");
+    }
+
     out.begin_block(Block::Namespace("detail"));
 
     if builtin.maybe_uninit {
@@ -224,8 +239,18 @@ pub(super) fn write(out: &mut OutFile) {
 
     out.begin_block(Block::AnonymousNamespace);
 
+    if builtin.repr_fat {
+        include.array = true;
+        include.cstdint = true;
+        out.next_section();
+        out.begin_block(Block::Namespace("repr"));
+        writeln!(out, "using Fat = ::std::array<::std::uintptr_t, 2>;");
+        out.end_block(Block::Namespace("repr"));
+    }
+
     if builtin.ptr_len {
         include.cstddef = true;
+        out.next_section();
         out.begin_block(Block::Namespace("repr"));
         writeln!(out, "struct PtrLen final {{");
         writeln!(out, "  void *ptr;");
@@ -242,20 +267,16 @@ pub(super) fn write(out: &mut OutFile) {
         if builtin.rust_str_new_unchecked {
             writeln!(
                 out,
-                "  static Str new_unchecked(repr::PtrLen repr) noexcept {{",
+                "  static Str new_unchecked(repr::Fat repr) noexcept {{",
             );
-            writeln!(out, "    Str str;");
-            writeln!(out, "    str.ptr = static_cast<const char *>(repr.ptr);");
-            writeln!(out, "    str.len = repr.len;");
+            writeln!(out, "    Str str = Str::uninit{{}};");
+            writeln!(out, "    str.repr = repr;");
             writeln!(out, "    return str;");
             writeln!(out, "  }}");
         }
         if builtin.rust_str_repr {
-            writeln!(out, "  static repr::PtrLen repr(Str str) noexcept {{");
-            writeln!(
-                out,
-                "    return repr::PtrLen{{const_cast<char *>(str.ptr), str.len}};",
-            );
+            writeln!(out, "  static repr::Fat repr(Str str) noexcept {{");
+            writeln!(out, "    return str.repr;");
             writeln!(out, "  }}");
         }
         writeln!(out, "}};");
@@ -267,20 +288,15 @@ pub(super) fn write(out: &mut OutFile) {
         writeln!(out, "class impl<Slice<T>> final {{");
         writeln!(out, "public:");
         if builtin.rust_slice_new {
-            writeln!(
-                out,
-                "  static Slice<T> slice(repr::PtrLen repr) noexcept {{",
-            );
-            writeln!(out, "    return {{static_cast<T *>(repr.ptr), repr.len}};");
+            writeln!(out, "  static Slice<T> slice(repr::Fat repr) noexcept {{");
+            writeln!(out, "    Slice<T> slice = typename Slice<T>::uninit{{}};");
+            writeln!(out, "    slice.repr = repr;");
+            writeln!(out, "    return slice;");
             writeln!(out, "  }}");
         }
         if builtin.rust_slice_repr {
-            include.type_traits = true;
-            writeln!(
-                out,
-                "  static repr::PtrLen repr(Slice<T> slice) noexcept {{",
-            );
-            writeln!(out, "    return repr::PtrLen{{slice.ptr, slice.len}};");
+            writeln!(out, "  static repr::Fat repr(Slice<T> slice) noexcept {{");
+            writeln!(out, "    return slice.repr;");
             writeln!(out, "  }}");
         }
         writeln!(out, "}};");
