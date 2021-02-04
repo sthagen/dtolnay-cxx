@@ -6,13 +6,13 @@ use crate::syntax::instantiate::ImplKey;
 use crate::syntax::report::Errors;
 use crate::syntax::symbol::Symbol;
 use crate::syntax::{
-    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, Impl, Pair, Signature, Struct,
-    Trait, Type, TypeAlias, Types,
+    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, Impl, Lifetimes, Pair, Signature,
+    Struct, Trait, Type, TypeAlias, Types,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use std::mem;
-use syn::{parse_quote, Result, Token};
+use syn::{parse_quote, punctuated, Lifetime, Result, Token};
 
 pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
@@ -114,16 +114,17 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
     }
 
     let vis = &ffi.vis;
+    let mod_token = &ffi.mod_token;
     let ident = &ffi.ident;
+    let span = ffi.brace_token.span;
+    let expanded = quote_spanned!(span=> {#expanded});
 
     quote! {
         #doc
         #attrs
         #[deny(improper_ctypes)]
-        #[allow(non_snake_case)]
-        #vis mod #ident {
-            #expanded
-        }
+        #[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
+        #vis #mod_token #ident #expanded
     }
 }
 
@@ -436,7 +437,7 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     let receiver = efn.receiver.iter().map(|receiver| {
         let var = receiver.var;
         if receiver.pinned {
-            let ty = receiver.ty();
+            let ty = receiver.ty_self();
             quote!(#var: #ty)
         } else {
             let ampersand = receiver.ampersand;
@@ -617,16 +618,44 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
         #trampolines
         #dispatch
     });
-    let function_shim = quote! {
-        #doc
-        #attrs
-        #visibility #unsafety #fn_token #ident #generics #arg_list #ret #fn_body
-    };
     match &efn.receiver {
-        None => function_shim,
+        None => {
+            quote! {
+                #doc
+                #attrs
+                #visibility #unsafety #fn_token #ident #generics #arg_list #ret #fn_body
+            }
+        }
         Some(receiver) => {
-            let receiver_type = &receiver.ty;
-            quote!(impl #receiver_type { #function_shim })
+            let elided_generics;
+            let receiver_ident = &receiver.ty.rust;
+            let resolve = types.resolve(&receiver.ty);
+            let receiver_generics = if receiver.ty.generics.lt_token.is_some() {
+                &receiver.ty.generics
+            } else {
+                elided_generics = Lifetimes {
+                    lt_token: resolve.generics.lt_token,
+                    lifetimes: resolve
+                        .generics
+                        .lifetimes
+                        .pairs()
+                        .map(|pair| {
+                            let lifetime = Lifetime::new("'_", pair.value().apostrophe);
+                            let punct = pair.punct().map(|&&comma| comma);
+                            punctuated::Pair::new(lifetime, punct)
+                        })
+                        .collect(),
+                    gt_token: resolve.generics.gt_token,
+                };
+                &elided_generics
+            };
+            quote! {
+                impl #generics #receiver_ident #receiver_generics {
+                    #doc
+                    #attrs
+                    #visibility #unsafety #fn_token #ident #arg_list #ret #fn_body
+                }
+            }
         }
     }
 }
@@ -979,7 +1008,7 @@ fn expand_rust_function_shim_super(
     let call = match &sig.receiver {
         None => quote_spanned!(span=> super::#invoke),
         Some(receiver) => {
-            let receiver_type = &receiver.ty;
+            let receiver_type = &receiver.ty.rust;
             quote_spanned!(span=> #receiver_type::#invoke)
         }
     };

@@ -222,6 +222,9 @@ pub mod ffi {
 
         #[rust_name = "c_return_borrow_elided"]
         fn c_return_borrow(s: &CxxString) -> UniquePtr<Borrow>;
+
+        fn const_member(self: &Borrow);
+        fn nonconst_member(self: Pin<&mut Borrow>);
     }
 
     #[repr(u32)]
