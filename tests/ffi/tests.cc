@@ -207,6 +207,10 @@ Enum c_return_enum(uint16_t n) {
   }
 }
 
+const C *c_return_const_ptr(size_t c) { return new C(c); }
+
+C *c_return_mut_ptr(size_t c) { return new C(c); }
+
 Borrow::Borrow(const std::string &s) : s(s) {}
 
 void Borrow::const_member() const {}
@@ -508,6 +512,14 @@ void c_take_nested_ns_enum(::A::B::ABEnum e) {
   }
 }
 
+size_t c_take_const_ptr(const C *c) { return c->get(); }
+
+size_t c_take_mut_ptr(C *c) {
+  size_t result = c->get();
+  delete c;
+  return result;
+}
+
 void c_try_return_void() {}
 
 size_t c_try_return_primitive() { return 2020; }
@@ -591,6 +603,12 @@ void c_take_trivial_ref(const D &d) {
     cxx_test_suite_set_correct();
   }
 }
+
+void c_take_trivial_mut_ref(D &d) { (void)d; }
+
+void c_take_trivial_pin_ref(const D &d) { (void)d; }
+
+void c_take_trivial_pin_mut_ref(D &d) { (void)d; }
 
 void D::c_take_trivial_ref_method() const {
   if (d == 30) {
@@ -779,14 +797,14 @@ extern "C" const char *cxx_run_test() noexcept {
   bool (rust::String::*cmp)(const rust::String &) const;
   bool first_first, first_second, sec_second, second_sec;
   for (auto test : {
-    std::tuple<decltype(cmp), bool, bool, bool, bool>
-    {&rust::String::operator==, true, false, false, false},
-    {&rust::String::operator!=, false, true, true, true},
-    {&rust::String::operator<, false, true, true, false},
-    {&rust::String::operator<=, true, true, true, false},
-    {&rust::String::operator>, false, false, false, true},
-    {&rust::String::operator>=, true, false, false, true},
-  }) {
+           std::tuple<decltype(cmp), bool, bool, bool, bool>{
+               &rust::String::operator==, true, false, false, false},
+           {&rust::String::operator!=, false, true, true, true},
+           {&rust::String::operator<, false, true, true, false},
+           {&rust::String::operator<=, true, true, true, false},
+           {&rust::String::operator>, false, false, false, true},
+           {&rust::String::operator>=, true, false, false, true},
+       }) {
     std::tie(cmp, first_first, first_second, sec_second, second_sec) = test;
     ASSERT((first.*cmp)(first) == first_first);
     ASSERT((first.*cmp)(second) == first_second);

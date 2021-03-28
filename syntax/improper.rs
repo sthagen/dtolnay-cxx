@@ -19,7 +19,7 @@ impl<'a> Types<'a> {
                 } else if let Some(strct) = self.structs.get(ident) {
                     Depends(&strct.name.rust) // iterate to fixed-point
                 } else {
-                    Definite(self.rust.contains(ident))
+                    Definite(self.rust.contains(ident) || self.aliases.contains_key(ident))
                 }
             }
             Type::RustBox(_)
@@ -32,6 +32,7 @@ impl<'a> Types<'a> {
                 Definite(false)
             }
             Type::Ref(ty) => self.determine_improper_ctype(&ty.inner),
+            Type::Ptr(ty) => self.determine_improper_ctype(&ty.inner),
             Type::Array(ty) => self.determine_improper_ctype(&ty.inner),
         }
     }

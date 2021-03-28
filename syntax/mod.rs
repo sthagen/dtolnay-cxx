@@ -20,13 +20,14 @@ mod parse;
 mod pod;
 pub mod qualified;
 pub mod report;
-mod resolve;
+pub mod resolve;
 pub mod set;
 pub mod symbol;
 mod tokens;
 mod toposort;
 pub mod trivial;
 pub mod types;
+mod visit;
 
 use self::attrs::OtherAttrs;
 use self::discriminant::Discriminant;
@@ -204,6 +205,7 @@ pub enum Type {
     SharedPtr(Box<Ty1>),
     WeakPtr(Box<Ty1>),
     Ref(Box<Ref>),
+    Ptr(Box<Ptr>),
     Str(Box<Ref>),
     CxxVector(Box<Ty1>),
     Fn(Box<Signature>),
@@ -227,6 +229,14 @@ pub struct Ref {
     pub inner: Type,
     pub pin_tokens: Option<(kw::Pin, Token![<], Token![>])>,
     pub mutability: Option<Token![mut]>,
+}
+
+pub struct Ptr {
+    pub star: Token![*],
+    pub mutable: bool,
+    pub inner: Type,
+    pub mutability: Option<Token![mut]>,
+    pub constness: Option<Token![const]>,
 }
 
 pub struct SliceRef {

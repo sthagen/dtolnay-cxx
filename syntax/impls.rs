@@ -1,12 +1,12 @@
 use crate::syntax::{
-    Array, ExternFn, Include, Lifetimes, Receiver, Ref, Signature, SliceRef, Ty1, Type, Var,
+    Array, ExternFn, Include, Lifetimes, Ptr, Receiver, Ref, Signature, SliceRef, Ty1, Type, Var,
 };
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::{Deref, DerefMut};
 
 impl PartialEq for Include {
-    fn eq(&self, other: &Include) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Include {
             path,
             kind,
@@ -47,6 +47,7 @@ impl Hash for Type {
             Type::SharedPtr(t) => t.hash(state),
             Type::WeakPtr(t) => t.hash(state),
             Type::Ref(t) => t.hash(state),
+            Type::Ptr(t) => t.hash(state),
             Type::Str(t) => t.hash(state),
             Type::RustVec(t) => t.hash(state),
             Type::CxxVector(t) => t.hash(state),
@@ -61,7 +62,7 @@ impl Hash for Type {
 impl Eq for Type {}
 
 impl PartialEq for Type {
-    fn eq(&self, other: &Type) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Type::Ident(lhs), Type::Ident(rhs)) => lhs == rhs,
             (Type::RustBox(lhs), Type::RustBox(rhs)) => lhs == rhs,
@@ -83,7 +84,7 @@ impl PartialEq for Type {
 impl Eq for Lifetimes {}
 
 impl PartialEq for Lifetimes {
-    fn eq(&self, other: &Lifetimes) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Lifetimes {
             lt_token: _,
             lifetimes,
@@ -115,7 +116,7 @@ impl Hash for Lifetimes {
 impl Eq for Ty1 {}
 
 impl PartialEq for Ty1 {
-    fn eq(&self, other: &Ty1) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Ty1 {
             name,
             langle: _,
@@ -148,7 +149,7 @@ impl Hash for Ty1 {
 impl Eq for Ref {}
 
 impl PartialEq for Ref {
-    fn eq(&self, other: &Ref) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Ref {
             pinned,
             ampersand: _,
@@ -189,10 +190,46 @@ impl Hash for Ref {
     }
 }
 
+impl Eq for Ptr {}
+
+impl PartialEq for Ptr {
+    fn eq(&self, other: &Ptr) -> bool {
+        let Ptr {
+            star: _,
+            mutable,
+            inner,
+            mutability: _,
+            constness: _,
+        } = self;
+        let Ptr {
+            star: _,
+            mutable: mutable2,
+            inner: inner2,
+            mutability: _,
+            constness: _,
+        } = other;
+        mutable == mutable2 && inner == inner2
+    }
+}
+
+impl Hash for Ptr {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let Ptr {
+            star: _,
+            mutable,
+            inner,
+            mutability: _,
+            constness: _,
+        } = self;
+        mutable.hash(state);
+        inner.hash(state);
+    }
+}
+
 impl Eq for SliceRef {}
 
 impl PartialEq for SliceRef {
-    fn eq(&self, other: &SliceRef) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let SliceRef {
             ampersand: _,
             lifetime,
@@ -232,7 +269,7 @@ impl Hash for SliceRef {
 impl Eq for Array {}
 
 impl PartialEq for Array {
-    fn eq(&self, other: &Array) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Array {
             bracket: _,
             inner,
@@ -268,7 +305,7 @@ impl Hash for Array {
 impl Eq for Signature {}
 
 impl PartialEq for Signature {
-    fn eq(&self, other: &Signature) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Signature {
             unsafety,
             fn_token: _,
@@ -349,7 +386,7 @@ impl Hash for Signature {
 impl Eq for Receiver {}
 
 impl PartialEq for Receiver {
-    fn eq(&self, other: &Receiver) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         let Receiver {
             pinned,
             ampersand: _,

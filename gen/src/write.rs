@@ -3,7 +3,7 @@ use crate::gen::nested::NamespaceEntries;
 use crate::gen::out::OutFile;
 use crate::gen::{builtin, include, Opt};
 use crate::syntax::atom::Atom::{self, *};
-use crate::syntax::instantiate::ImplKey;
+use crate::syntax::instantiate::{ImplKey, NamedImplKey};
 use crate::syntax::map::UnorderedMap as Map;
 use crate::syntax::set::UnorderedSet;
 use crate::syntax::symbol::Symbol;
@@ -222,7 +222,7 @@ fn pick_includes_and_builtins(out: &mut OutFile, apis: &[Api]) {
             Type::Fn(_) => out.builtin.rust_fn = true,
             Type::SliceRef(_) => out.builtin.rust_slice = true,
             Type::Array(_) => out.include.array = true,
-            Type::Ref(_) | Type::Void(_) => {}
+            Type::Ref(_) | Type::Void(_) | Type::Ptr(_) => {}
         }
     }
 }
@@ -873,7 +873,13 @@ fn write_rust_function_decl_impl(
         if needs_comma {
             write!(out, ", ");
         }
-        write_return_type(out, &sig.ret);
+        match sig.ret.as_ref().unwrap() {
+            Type::Ref(ret) => {
+                write_pointee_type(out, &ret.inner, ret.mutable);
+                write!(out, " *");
+            }
+            ret => write_type_space(out, ret),
+        }
         write!(out, "*return$");
         needs_comma = true;
     }
@@ -968,7 +974,13 @@ fn write_rust_function_shim_impl(
     if indirect_return {
         out.builtin.maybe_uninit = true;
         write!(out, "::rust::MaybeUninit<");
-        write_type(out, sig.ret.as_ref().unwrap());
+        match sig.ret.as_ref().unwrap() {
+            Type::Ref(ret) => {
+                write_pointee_type(out, &ret.inner, ret.mutable);
+                write!(out, " *");
+            }
+            ret => write_type(out, ret),
+        }
         writeln!(out, "> return$;");
         write!(out, "  ");
     } else if let Some(ret) = &sig.ret {
@@ -1051,8 +1063,15 @@ fn write_rust_function_shim_impl(
         writeln!(out, "  }}");
     }
     if indirect_return {
-        out.include.utility = true;
-        writeln!(out, "  return ::std::move(return$.value);");
+        write!(out, "  return ");
+        match sig.ret.as_ref().unwrap() {
+            Type::Ref(_) => write!(out, "*return$.value"),
+            _ => {
+                out.include.utility = true;
+                write!(out, "::std::move(return$.value)");
+            }
+        }
+        writeln!(out, ";");
     }
     writeln!(out, "}}");
 }
@@ -1173,11 +1192,12 @@ fn write_type(out: &mut OutFile, ty: &Type) {
             write!(out, ">");
         }
         Type::Ref(r) => {
-            if !r.mutable {
-                write!(out, "const ");
-            }
-            write_type(out, &r.inner);
+            write_pointee_type(out, &r.inner, r.mutable);
             write!(out, " &");
+        }
+        Type::Ptr(p) => {
+            write_pointee_type(out, &p.inner, p.mutable);
+            write!(out, " *");
         }
         Type::Str(_) => {
             write!(out, "::rust::Str");
@@ -1211,6 +1231,21 @@ fn write_type(out: &mut OutFile, ty: &Type) {
             write!(out, ", {}>", &a.len);
         }
         Type::Void(_) => unreachable!(),
+    }
+}
+
+// Write just the T type behind a &T or &mut T or *const T or *mut T.
+fn write_pointee_type(out: &mut OutFile, inner: &Type, mutable: bool) {
+    if let Type::Ptr(_) = inner {
+        write_type_space(out, inner);
+        if !mutable {
+            write!(out, "const");
+        }
+    } else {
+        if !mutable {
+            write!(out, "const ");
+        }
+        write_type(out, inner);
     }
 }
 
@@ -1253,7 +1288,7 @@ fn write_space_after_type(out: &mut OutFile, ty: &Type) {
         | Type::SliceRef(_)
         | Type::Fn(_)
         | Type::Array(_) => write!(out, " "),
-        Type::Ref(_) => {}
+        Type::Ref(_) | Type::Ptr(_) => {}
         Type::Void(_) => unreachable!(),
     }
 }
@@ -1314,7 +1349,7 @@ fn write_generic_instantiations(out: &mut OutFile) {
     out.begin_block(Block::ExternC);
     for impl_key in out.types.impls.keys() {
         out.next_section();
-        match impl_key {
+        match *impl_key {
             ImplKey::RustBox(ident) => write_rust_box_extern(out, ident),
             ImplKey::RustVec(ident) => write_rust_vec_extern(out, ident),
             ImplKey::UniquePtr(ident) => write_unique_ptr(out, ident),
@@ -1328,7 +1363,7 @@ fn write_generic_instantiations(out: &mut OutFile) {
     out.begin_block(Block::Namespace("rust"));
     out.begin_block(Block::InlineNamespace("cxxbridge1"));
     for impl_key in out.types.impls.keys() {
-        match impl_key {
+        match *impl_key {
             ImplKey::RustBox(ident) => write_rust_box_impl(out, ident),
             ImplKey::RustVec(ident) => write_rust_vec_impl(out, ident),
             _ => {}
@@ -1338,8 +1373,8 @@ fn write_generic_instantiations(out: &mut OutFile) {
     out.end_block(Block::Namespace("rust"));
 }
 
-fn write_rust_box_extern(out: &mut OutFile, ident: &Ident) {
-    let resolve = out.types.resolve(ident);
+fn write_rust_box_extern(out: &mut OutFile, key: NamedImplKey) {
+    let resolve = out.types.resolve(&key);
     let inner = resolve.name.to_fully_qualified();
     let instance = resolve.name.to_symbol();
 
@@ -1360,7 +1395,8 @@ fn write_rust_box_extern(out: &mut OutFile, ident: &Ident) {
     );
 }
 
-fn write_rust_vec_extern(out: &mut OutFile, element: &Ident) {
+fn write_rust_vec_extern(out: &mut OutFile, key: NamedImplKey) {
+    let element = key.rust;
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 
@@ -1403,8 +1439,8 @@ fn write_rust_vec_extern(out: &mut OutFile, element: &Ident) {
     );
 }
 
-fn write_rust_box_impl(out: &mut OutFile, ident: &Ident) {
-    let resolve = out.types.resolve(ident);
+fn write_rust_box_impl(out: &mut OutFile, key: NamedImplKey) {
+    let resolve = out.types.resolve(&key);
     let inner = resolve.name.to_fully_qualified();
     let instance = resolve.name.to_symbol();
 
@@ -1435,7 +1471,8 @@ fn write_rust_box_impl(out: &mut OutFile, ident: &Ident) {
     writeln!(out, "}}");
 }
 
-fn write_rust_vec_impl(out: &mut OutFile, element: &Ident) {
+fn write_rust_vec_impl(out: &mut OutFile, key: NamedImplKey) {
+    let element = key.rust;
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 
@@ -1512,8 +1549,8 @@ fn write_rust_vec_impl(out: &mut OutFile, element: &Ident) {
     writeln!(out, "}}");
 }
 
-fn write_unique_ptr(out: &mut OutFile, ident: &Ident) {
-    let ty = UniquePtr::Ident(ident);
+fn write_unique_ptr(out: &mut OutFile, key: NamedImplKey) {
+    let ty = UniquePtr::Ident(key.rust);
     write_unique_ptr_common(out, ty);
 }
 
@@ -1628,7 +1665,8 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
     writeln!(out, "}}");
 }
 
-fn write_shared_ptr(out: &mut OutFile, ident: &Ident) {
+fn write_shared_ptr(out: &mut OutFile, key: NamedImplKey) {
+    let ident = key.rust;
     let resolve = out.types.resolve(ident);
     let inner = resolve.name.to_fully_qualified();
     let instance = resolve.name.to_symbol();
@@ -1700,8 +1738,8 @@ fn write_shared_ptr(out: &mut OutFile, ident: &Ident) {
     writeln!(out, "}}");
 }
 
-fn write_weak_ptr(out: &mut OutFile, ident: &Ident) {
-    let resolve = out.types.resolve(ident);
+fn write_weak_ptr(out: &mut OutFile, key: NamedImplKey) {
+    let resolve = out.types.resolve(&key);
     let inner = resolve.name.to_fully_qualified();
     let instance = resolve.name.to_symbol();
 
@@ -1759,7 +1797,8 @@ fn write_weak_ptr(out: &mut OutFile, ident: &Ident) {
     writeln!(out, "}}");
 }
 
-fn write_cxx_vector(out: &mut OutFile, element: &Ident) {
+fn write_cxx_vector(out: &mut OutFile, key: NamedImplKey) {
+    let element = key.rust;
     let inner = element.to_typename(out.types);
     let instance = element.to_mangled(out.types);
 

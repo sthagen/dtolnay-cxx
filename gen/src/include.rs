@@ -33,6 +33,7 @@ pub struct Includes<'a> {
     pub iterator: bool,
     pub memory: bool,
     pub new: bool,
+    pub stdexcept: bool,
     pub string: bool,
     pub type_traits: bool,
     pub utility: bool,
@@ -50,11 +51,18 @@ impl<'a> Includes<'a> {
     pub fn insert(&mut self, include: impl Into<Include>) {
         self.custom.push(include.into());
     }
+
+    pub fn has_cxx_header(&self) -> bool {
+        self.custom
+            .iter()
+            .any(|header| header.path == "rust/cxx.h" || header.path == "rust\\cxx.h")
+    }
 }
 
 pub(super) fn write(out: &mut OutFile) {
     let header = out.header;
     let include = &mut out.include;
+    let cxx_header = include.has_cxx_header();
     let out = &mut include.content;
 
     if header {
@@ -86,6 +94,7 @@ pub(super) fn write(out: &mut OutFile) {
         iterator,
         memory,
         new,
+        stdexcept,
         string,
         type_traits,
         utility,
@@ -95,69 +104,72 @@ pub(super) fn write(out: &mut OutFile) {
         content: _,
     } = *include;
 
-    if algorithm {
+    if algorithm && !cxx_header {
         writeln!(out, "#include <algorithm>");
     }
-    if array {
+    if array && !cxx_header {
         writeln!(out, "#include <array>");
     }
-    if cassert {
+    if cassert && !cxx_header {
         writeln!(out, "#include <cassert>");
     }
-    if cstddef {
+    if cstddef && !cxx_header {
         writeln!(out, "#include <cstddef>");
     }
-    if cstdint {
+    if cstdint && !cxx_header {
         writeln!(out, "#include <cstdint>");
     }
     if cstring {
         writeln!(out, "#include <cstring>");
     }
-    if exception {
+    if exception && !cxx_header {
         writeln!(out, "#include <exception>");
     }
     if functional {
         writeln!(out, "#include <functional>");
     }
-    if initializer_list {
+    if initializer_list && !cxx_header {
         writeln!(out, "#include <initializer_list>");
     }
-    if iterator {
+    if iterator && !cxx_header {
         writeln!(out, "#include <iterator>");
     }
     if memory {
         writeln!(out, "#include <memory>");
     }
-    if new {
+    if new && !cxx_header {
         writeln!(out, "#include <new>");
     }
-    if string {
+    if stdexcept && !cxx_header {
+        writeln!(out, "#include <stdexcept>");
+    }
+    if string && !cxx_header {
         writeln!(out, "#include <string>");
     }
-    if type_traits {
+    if type_traits && !cxx_header {
         writeln!(out, "#include <type_traits>");
     }
-    if utility {
+    if utility && !cxx_header {
         writeln!(out, "#include <utility>");
     }
-    if vector {
+    if vector && !cxx_header {
         writeln!(out, "#include <vector>");
     }
-    if basetsd {
+    if basetsd && !cxx_header {
         writeln!(out, "#if defined(_WIN32)");
         writeln!(out, "#include <basetsd.h>");
     }
-    if sys_types {
+    if sys_types && !cxx_header {
         if basetsd {
             writeln!(out, "#else");
         } else {
             writeln!(out, "#if not defined(_WIN32)");
         }
     }
-    if sys_types {
+    if sys_types && !cxx_header {
         writeln!(out, "#include <sys/types.h>");
     }
-    if basetsd || sys_types {
+    if (basetsd || sys_types) && !cxx_header {
         writeln!(out, "#endif");
     }
 }

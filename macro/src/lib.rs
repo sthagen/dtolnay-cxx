@@ -23,13 +23,16 @@
     clippy::too_many_arguments,
     clippy::too_many_lines,
     clippy::toplevel_ref_arg,
-    clippy::useless_let_if_seq
+    clippy::useless_let_if_seq,
+    // clippy bug: https://github.com/rust-lang/rust-clippy/issues/6983
+    clippy::wrong_self_convention
 )]
 
 extern crate proc_macro;
 
 mod derive;
 mod expand;
+mod generics;
 mod syntax;
 mod type_id;
 

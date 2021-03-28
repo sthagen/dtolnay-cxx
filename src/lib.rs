@@ -340,6 +340,7 @@
 //! <tr><td>[T; N]</td><td>std::array&lt;T, N&gt;</td><td><sup><i>cannot hold opaque C++ type</i></sup></td></tr>
 //! <tr><td>Vec&lt;T&gt;</td><td>rust::Vec&lt;T&gt;</td><td><sup><i>cannot hold opaque C++ type</i></sup></td></tr>
 //! <tr><td><a href="struct.CxxVector.html">CxxVector&lt;T&gt;</a></td><td>std::vector&lt;T&gt;</td><td><sup><i>cannot be passed by value, cannot hold opaque Rust type</i></sup></td></tr>
+//! <tr><td>*mut T, *const T</td><td>T*, const T*</td><td><sup><i>fn with a raw pointer argument must be declared unsafe to call</i></sup></td></tr>
 //! <tr><td>fn(T, U) -&gt; V</td><td>rust::Fn&lt;V(T, U)&gt;</td><td><sup><i>only passing from Rust to C++ is implemented so far</i></sup></td></tr>
 //! <tr><td>Result&lt;T&gt;</td><td>throw/catch</td><td><sup><i>allowed as return type only</i></sup></td></tr>
 //! </table>
@@ -363,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.32")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.40")]
 #![deny(improper_ctypes)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -399,9 +400,12 @@ extern crate std;
 #[macro_use]
 mod macros;
 
+mod cxx_vector;
 mod exception;
 mod extern_type;
+mod fmt;
 mod function;
+pub mod memory;
 mod opaque;
 mod result;
 mod rust_slice;
@@ -416,17 +420,15 @@ mod symbols;
 mod type_id;
 mod unique_ptr;
 mod unwind;
-#[path = "cxx_vector.rs"]
 pub mod vector;
 mod weak_ptr;
 
+pub use crate::cxx_vector::CxxVector;
 pub use crate::exception::Exception;
 pub use crate::extern_type::{kind, ExternType};
 pub use crate::shared_ptr::SharedPtr;
 pub use crate::string::CxxString;
 pub use crate::unique_ptr::UniquePtr;
-#[doc(inline)]
-pub use crate::vector::CxxVector;
 pub use crate::weak_ptr::WeakPtr;
 pub use cxxbridge_macro::bridge;
 
@@ -447,6 +449,7 @@ pub type Vector<T> = CxxVector<T>;
 // Not public API.
 #[doc(hidden)]
 pub mod private {
+    pub use crate::cxx_vector::VectorElement;
     pub use crate::extern_type::{verify_extern_kind, verify_extern_type};
     pub use crate::function::FatFunction;
     pub use crate::opaque::Opaque;
@@ -460,7 +463,6 @@ pub mod private {
     pub use crate::string::StackString;
     pub use crate::unique_ptr::UniquePtrTarget;
     pub use crate::unwind::catch_unwind;
-    pub use crate::vector::VectorElement;
     pub use crate::weak_ptr::WeakPtrTarget;
     pub use cxxbridge_macro::type_id;
 }

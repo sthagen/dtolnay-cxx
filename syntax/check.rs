@@ -1,8 +1,9 @@
 use crate::syntax::atom::Atom::{self, *};
 use crate::syntax::report::Errors;
+use crate::syntax::visit::{self, Visit};
 use crate::syntax::{
-    error, ident, trivial, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, NamedType, Receiver,
-    Ref, Signature, SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
+    error, ident, trivial, Api, Array, Enum, ExternFn, ExternType, Impl, Lang, NamedType, Ptr,
+    Receiver, Ref, Signature, SliceRef, Struct, Trait, Ty1, Type, TypeAlias, Types,
 };
 use proc_macro2::{Delimiter, Group, Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -35,6 +36,7 @@ fn do_typecheck(cx: &mut Check) {
             Type::WeakPtr(ptr) => check_type_weak_ptr(cx, ptr),
             Type::CxxVector(ptr) => check_type_cxx_vector(cx, ptr),
             Type::Ref(ty) => check_type_ref(cx, ty),
+            Type::Ptr(ty) => check_type_ptr(cx, ty),
             Type::Array(array) => check_type_array(cx, array),
             Type::Fn(ty) => check_type_fn(cx, ty),
             Type::SliceRef(ty) => check_type_slice_ref(cx, ty),
@@ -198,7 +200,7 @@ fn check_type_cxx_vector(cx: &mut Check, ptr: &Ty1) {
         }
     }
 
-    cx.error(ptr, "unsupported vector target type");
+    cx.error(ptr, "unsupported vector element type");
 }
 
 fn check_type_ref(cx: &mut Check, ty: &Ref) {
@@ -232,6 +234,19 @@ fn check_type_ref(cx: &mut Check, ty: &Ref) {
     cx.error(ty, "unsupported reference type");
 }
 
+fn check_type_ptr(cx: &mut Check, ty: &Ptr) {
+    match ty.inner {
+        Type::Fn(_) | Type::Void(_) => {}
+        Type::Ref(_) => {
+            cx.error(ty, "C++ does not allow pointer to reference as a type");
+            return;
+        }
+        _ => return,
+    }
+
+    cx.error(ty, "unsupported pointer type");
+}
+
 fn check_type_slice_ref(cx: &mut Check, ty: &SliceRef) {
     let supported = !is_unsized(cx, &ty.inner)
         || match &ty.inner {
@@ -262,6 +277,17 @@ fn check_type_array(cx: &mut Check, ty: &Array) {
 fn check_type_fn(cx: &mut Check, ty: &Signature) {
     if ty.throws {
         cx.error(ty, "function pointer returning Result is not supported yet");
+    }
+
+    for arg in &ty.args {
+        if let Type::Ptr(_) = arg.ty {
+            if ty.unsafety.is_none() {
+                cx.error(
+                    arg,
+                    "pointer argument requires that the function pointer be marked unsafe",
+                );
+            }
+        }
     }
 }
 
@@ -416,6 +442,13 @@ fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
                     "passing a function pointer from C++ to Rust is not implemented yet",
                 );
             }
+        } else if let Type::Ptr(_) = arg.ty {
+            if efn.sig.unsafety.is_none() {
+                cx.error(
+                    arg,
+                    "pointer argument requires that the function be marked unsafe",
+                );
+            }
         } else if is_unsized(cx, &arg.ty) {
             let desc = describe(cx, &arg.ty);
             let msg = format!("passing {} by value is not supported", desc);
@@ -436,8 +469,6 @@ fn check_api_fn(cx: &mut Check, efn: &ExternFn) {
     if efn.lang == Lang::Cxx {
         check_mut_return_restriction(cx, efn);
     }
-
-    check_multiple_arg_lifetimes(cx, efn);
 }
 
 fn check_api_type_alias(cx: &mut Check, alias: &TypeAlias) {
@@ -476,58 +507,65 @@ fn check_api_impl(cx: &mut Check, imp: &Impl) {
 }
 
 fn check_mut_return_restriction(cx: &mut Check, efn: &ExternFn) {
+    if efn.sig.unsafety.is_some() {
+        // Unrestricted as long as the function is made unsafe-to-call.
+        return;
+    }
+
     match &efn.ret {
         Some(Type::Ref(ty)) if ty.mutable => {}
         _ => return,
     }
 
-    if let Some(r) = &efn.receiver {
-        if r.mutable {
+    if let Some(receiver) = &efn.receiver {
+        if receiver.mutable {
+            return;
+        }
+        let resolve = match cx.types.try_resolve(&receiver.ty) {
+            Some(resolve) => resolve,
+            None => return,
+        };
+        if !resolve.generics.lifetimes.is_empty() {
             return;
         }
     }
 
-    for arg in &efn.args {
-        if let Type::Ref(ty) = &arg.ty {
-            if ty.mutable {
-                return;
-            }
+    struct FindLifetimeMut<'a> {
+        cx: &'a Check<'a>,
+        found: bool,
+    }
+
+    impl<'t, 'a> Visit<'t> for FindLifetimeMut<'a> {
+        fn visit_type(&mut self, ty: &'t Type) {
+            self.found |= match ty {
+                Type::Ref(ty) => ty.mutable,
+                Type::SliceRef(slice) => slice.mutable,
+                Type::Ident(ident) if Atom::from(&ident.rust).is_none() => {
+                    match self.cx.types.try_resolve(ident) {
+                        Some(resolve) => !resolve.generics.lifetimes.is_empty(),
+                        None => true,
+                    }
+                }
+                _ => false,
+            };
+            visit::visit_type(self, ty);
         }
+    }
+
+    let mut visitor = FindLifetimeMut { cx, found: false };
+
+    for arg in &efn.args {
+        visitor.visit_type(&arg.ty);
+    }
+
+    if visitor.found {
+        return;
     }
 
     cx.error(
         efn,
         "&mut return type is not allowed unless there is a &mut argument",
     );
-}
-
-fn check_multiple_arg_lifetimes(cx: &mut Check, efn: &ExternFn) {
-    if efn.lang == Lang::Cxx && efn.trusted {
-        return;
-    }
-
-    match &efn.ret {
-        Some(Type::Ref(_)) => {}
-        _ => return,
-    }
-
-    let mut reference_args = 0;
-    for arg in &efn.args {
-        if let Type::Ref(_) = &arg.ty {
-            reference_args += 1;
-        }
-    }
-
-    if efn.receiver.is_some() {
-        reference_args += 1;
-    }
-
-    if reference_args != 1 {
-        cx.error(
-            efn,
-            "functions that return a reference must take exactly one input reference",
-        );
-    }
 }
 
 fn check_reserved_name(cx: &mut Check, ident: &Ident) {
@@ -558,6 +596,7 @@ fn is_unsized(cx: &mut Check, ty: &Type) -> bool {
         | Type::SharedPtr(_)
         | Type::WeakPtr(_)
         | Type::Ref(_)
+        | Type::Ptr(_)
         | Type::Str(_)
         | Type::SliceRef(_) => false,
     }
@@ -631,6 +670,7 @@ fn describe(cx: &mut Check, ty: &Type) -> String {
         Type::SharedPtr(_) => "shared_ptr".to_owned(),
         Type::WeakPtr(_) => "weak_ptr".to_owned(),
         Type::Ref(_) => "reference".to_owned(),
+        Type::Ptr(_) => "raw pointer".to_owned(),
         Type::Str(_) => "&str".to_owned(),
         Type::CxxVector(_) => "C++ vector".to_owned(),
         Type::SliceRef(_) => "slice".to_owned(),

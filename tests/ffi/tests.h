@@ -118,6 +118,8 @@ Enum c_return_enum(uint16_t n);
 ::A::AEnum c_return_ns_enum(uint16_t n);
 ::A::B::ABEnum c_return_nested_ns_enum(uint16_t n);
 std::unique_ptr<Borrow> c_return_borrow(const std::string &s);
+const C *c_return_const_ptr(size_t n);
+C *c_return_mut_ptr(size_t n);
 
 void c_take_primitive(size_t n);
 void c_take_shared(Shared shared);
@@ -161,6 +163,8 @@ void c_take_callback(rust::Fn<size_t(rust::String)> callback);
 void c_take_enum(Enum e);
 void c_take_ns_enum(::A::AEnum e);
 void c_take_nested_ns_enum(::A::B::ABEnum e);
+size_t c_take_const_ptr(const C *c);
+size_t c_take_mut_ptr(C *c);
 
 void c_try_return_void();
 size_t c_try_return_primitive();
@@ -180,6 +184,9 @@ size_t c_get_use_count(const std::weak_ptr<C> &weak) noexcept;
 
 void c_take_trivial_ptr(std::unique_ptr<D> d);
 void c_take_trivial_ref(const D &d);
+void c_take_trivial_mut_ref(D &d);
+void c_take_trivial_pin_ref(const D &d);
+void c_take_trivial_pin_mut_ref(D &d);
 void c_take_trivial(D d);
 
 void c_take_trivial_ns_ptr(std::unique_ptr<::G::G> g);

@@ -5,8 +5,8 @@ use crate::syntax::report::Errors;
 use crate::syntax::Atom::*;
 use crate::syntax::{
     attrs, error, Api, Array, Derive, Doc, Enum, ExternFn, ExternType, ForeignName, Impl, Include,
-    IncludeKind, Lang, Lifetimes, NamedType, Namespace, Pair, Receiver, Ref, Signature, SliceRef,
-    Struct, Ty1, Type, TypeAlias, Var, Variant,
+    IncludeKind, Lang, Lifetimes, NamedType, Namespace, Pair, Ptr, Receiver, Ref, Signature,
+    SliceRef, Struct, Ty1, Type, TypeAlias, Var, Variant,
 };
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
@@ -17,7 +17,7 @@ use syn::{
     Abi, Attribute, Error, Expr, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemType,
     GenericArgument, GenericParam, Generics, Ident, ItemEnum, ItemImpl, ItemStruct, Lit, LitStr,
     Pat, PathArguments, Result, ReturnType, Signature as RustSignature, Token, TraitBound,
-    TraitBoundModifier, Type as RustType, TypeArray, TypeBareFn, TypeParamBound, TypePath,
+    TraitBoundModifier, Type as RustType, TypeArray, TypeBareFn, TypeParamBound, TypePath, TypePtr,
     TypeReference, Variant as RustVariant, Visibility,
 };
 
@@ -966,6 +966,7 @@ fn parse_impl(imp: ItemImpl) -> Result<Api> {
         },
         Type::Ident(_)
         | Type::Ref(_)
+        | Type::Ptr(_)
         | Type::Str(_)
         | Type::Fn(_)
         | Type::Void(_)
@@ -1034,6 +1035,7 @@ fn parse_include(input: ParseStream) -> Result<Include> {
 fn parse_type(ty: &RustType) -> Result<Type> {
     match ty {
         RustType::Reference(ty) => parse_type_reference(ty),
+        RustType::Ptr(ty) => parse_type_ptr(ty),
         RustType::Path(ty) => parse_type_path(ty),
         RustType::Array(ty) => parse_type_array(ty),
         RustType::BareFn(ty) => parse_type_fn(ty),
@@ -1082,6 +1084,23 @@ fn parse_type_reference(ty: &TypeReference) -> Result<Type> {
         inner,
         pin_tokens,
         mutability,
+    })))
+}
+
+fn parse_type_ptr(ty: &TypePtr) -> Result<Type> {
+    let star = ty.star_token;
+    let mutable = ty.mutability.is_some();
+    let constness = ty.const_token;
+    let mutability = ty.mutability;
+
+    let inner = parse_type(&ty.elem)?;
+
+    Ok(Type::Ptr(Box::new(Ptr {
+        star,
+        mutable,
+        inner,
+        mutability,
+        constness,
     })))
 }
 

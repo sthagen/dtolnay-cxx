@@ -1,7 +1,9 @@
 use crate::actually_private::Private;
 use alloc::borrow::Cow;
 use alloc::string::String;
+use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display};
+use core::hash::{Hash, Hasher};
 use core::marker::{PhantomData, PhantomPinned};
 use core::mem::MaybeUninit;
 use core::pin::Pin;
@@ -166,7 +168,7 @@ impl Debug for CxxString {
 }
 
 impl PartialEq for CxxString {
-    fn eq(&self, other: &CxxString) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.as_bytes() == other.as_bytes()
     }
 }
@@ -180,6 +182,26 @@ impl PartialEq<CxxString> for str {
 impl PartialEq<str> for CxxString {
     fn eq(&self, other: &str) -> bool {
         self.as_bytes() == other.as_bytes()
+    }
+}
+
+impl Eq for CxxString {}
+
+impl PartialOrd for CxxString {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.as_bytes().partial_cmp(other.as_bytes())
+    }
+}
+
+impl Ord for CxxString {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_bytes().cmp(other.as_bytes())
+    }
+}
+
+impl Hash for CxxString {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
     }
 }
 

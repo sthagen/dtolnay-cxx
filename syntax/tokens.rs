@@ -1,7 +1,7 @@
 use crate::syntax::atom::Atom::*;
 use crate::syntax::{
-    Array, Atom, Derive, Enum, ExternFn, ExternType, Impl, Lifetimes, NamedType, Receiver, Ref,
-    Signature, SliceRef, Struct, Ty1, Type, TypeAlias, Var,
+    Array, Atom, Derive, Enum, ExternFn, ExternType, Impl, Lifetimes, NamedType, Ptr, Receiver,
+    Ref, Signature, SliceRef, Struct, Ty1, Type, TypeAlias, Var,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote_spanned, ToTokens};
@@ -27,6 +27,7 @@ impl ToTokens for Type {
             | Type::CxxVector(ty)
             | Type::RustVec(ty) => ty.to_tokens(tokens),
             Type::Ref(r) | Type::Str(r) => r.to_tokens(tokens),
+            Type::Ptr(p) => p.to_tokens(tokens),
             Type::Array(a) => a.to_tokens(tokens),
             Type::Fn(f) => f.to_tokens(tokens),
             Type::Void(span) => tokens.extend(quote_spanned!(*span=> ())),
@@ -97,6 +98,22 @@ impl ToTokens for Ref {
         if let Some((_pin, _langle, rangle)) = pin_tokens {
             rangle.to_tokens(tokens);
         }
+    }
+}
+
+impl ToTokens for Ptr {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Ptr {
+            star,
+            mutable: _,
+            inner,
+            mutability,
+            constness,
+        } = self;
+        star.to_tokens(tokens);
+        mutability.to_tokens(tokens);
+        constness.to_tokens(tokens);
+        inner.to_tokens(tokens);
     }
 }
 
@@ -187,6 +204,7 @@ impl ToTokens for Enum {
 impl ToTokens for ExternFn {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         // Notional token range for error reporting purposes.
+        self.unsafety.to_tokens(tokens);
         self.sig.fn_token.to_tokens(tokens);
         self.semi_token.to_tokens(tokens);
     }
