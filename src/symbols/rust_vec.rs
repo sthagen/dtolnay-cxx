@@ -7,14 +7,15 @@ use std::os::raw::c_char;
 
 macro_rules! rust_vec_shims {
     ($segment:expr, $ty:ty) => {
-        const_assert_eq!(mem::size_of::<[usize; 3]>(), mem::size_of::<Vec<$ty>>());
-        const_assert_eq!(mem::align_of::<usize>(), mem::align_of::<Vec<$ty>>());
+        const_assert_eq!(mem::size_of::<[usize; 3]>(), mem::size_of::<RustVec<$ty>>());
+        const_assert_eq!(mem::size_of::<Vec<$ty>>(), mem::size_of::<RustVec<$ty>>());
+        const_assert_eq!(mem::align_of::<Vec<$ty>>(), mem::align_of::<RustVec<$ty>>());
 
         const _: () = {
             attr! {
                 #[export_name = concat!("cxxbridge1$rust_vec$", $segment, "$new")]
                 unsafe extern "C" fn __new(this: *mut RustVec<$ty>) {
-                    ptr::write(this, RustVec { repr: Vec::new() });
+                    ptr::write(this, RustVec::new());
                 }
             }
             attr! {
@@ -26,19 +27,19 @@ macro_rules! rust_vec_shims {
             attr! {
                 #[export_name = concat!("cxxbridge1$rust_vec$", $segment, "$len")]
                 unsafe extern "C" fn __len(this: *const RustVec<$ty>) -> usize {
-                    (*this).repr.len()
+                    (*this).len()
                 }
             }
             attr! {
                 #[export_name = concat!("cxxbridge1$rust_vec$", $segment, "$capacity")]
                 unsafe extern "C" fn __capacity(this: *const RustVec<$ty>) -> usize {
-                    (*this).repr.capacity()
+                    (*this).capacity()
                 }
             }
             attr! {
                 #[export_name = concat!("cxxbridge1$rust_vec$", $segment, "$data")]
                 unsafe extern "C" fn __data(this: *const RustVec<$ty>) -> *const $ty {
-                    (*this).repr.as_ptr()
+                    (*this).as_ptr()
                 }
             }
             attr! {
@@ -50,7 +51,7 @@ macro_rules! rust_vec_shims {
             attr! {
                 #[export_name = concat!("cxxbridge1$rust_vec$", $segment, "$set_len")]
                 unsafe extern "C" fn __set_len(this: *mut RustVec<$ty>, len: usize) {
-                    (*this).repr.set_len(len);
+                    (*this).set_len(len);
                 }
             }
         };
