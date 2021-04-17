@@ -1592,11 +1592,7 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
         // know at code generation time, so we generate both C++ and Rust side
         // bindings for a "new" method anyway. But the Rust code can't be called
         // for Opaque types because the 'new' method is not implemented.
-        UniquePtr::Ident(ident) => {
-            out.types.structs.contains_key(ident)
-                || out.types.enums.contains_key(ident)
-                || out.types.aliases.contains_key(ident)
-        }
+        UniquePtr::Ident(ident) => out.types.is_maybe_trivial(ident),
         UniquePtr::CxxVector(_) => false,
     };
 
@@ -1704,9 +1700,7 @@ fn write_shared_ptr(out: &mut OutFile, key: NamedImplKey) {
     // know at code generation time, so we generate both C++ and Rust side
     // bindings for a "new" method anyway. But the Rust code can't be called for
     // Opaque types because the 'new' method is not implemented.
-    let can_construct_from_value = out.types.structs.contains_key(ident)
-        || out.types.enums.contains_key(ident)
-        || out.types.aliases.contains_key(ident);
+    let can_construct_from_value = out.types.is_maybe_trivial(ident);
 
     writeln!(
         out,
@@ -1829,6 +1823,8 @@ fn write_cxx_vector(out: &mut OutFile, key: NamedImplKey) {
     let instance = element.to_mangled(out.types);
 
     out.include.cstddef = true;
+    out.include.utility = true;
+    out.builtin.destroy = true;
 
     writeln!(
         out,
@@ -1837,6 +1833,7 @@ fn write_cxx_vector(out: &mut OutFile, key: NamedImplKey) {
     );
     writeln!(out, "  return s.size();");
     writeln!(out, "}}");
+
     writeln!(
         out,
         "{} *cxxbridge1$std$vector${}$get_unchecked(::std::vector<{}> *s, ::std::size_t pos) noexcept {{",
@@ -1844,6 +1841,26 @@ fn write_cxx_vector(out: &mut OutFile, key: NamedImplKey) {
     );
     writeln!(out, "  return &(*s)[pos];");
     writeln!(out, "}}");
+
+    if out.types.is_maybe_trivial(element) {
+        writeln!(
+            out,
+            "void cxxbridge1$std$vector${}$push_back(::std::vector<{}> *v, {} *value) noexcept {{",
+            instance, inner, inner,
+        );
+        writeln!(out, "  v->push_back(::std::move(*value));");
+        writeln!(out, "  ::rust::destroy(value);");
+        writeln!(out, "}}");
+
+        writeln!(
+            out,
+            "void cxxbridge1$std$vector${}$pop_back(::std::vector<{}> *v, {} *out) noexcept {{",
+            instance, inner, inner,
+        );
+        writeln!(out, "  ::new (out) {}(::std::move(v->back()));", inner);
+        writeln!(out, "  v->pop_back();");
+        writeln!(out, "}}");
+    }
 
     out.include.memory = true;
     write_unique_ptr_common(out, UniquePtr::CxxVector(element));

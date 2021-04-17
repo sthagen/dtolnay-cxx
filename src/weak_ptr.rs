@@ -91,8 +91,11 @@ where
     }
 }
 
-// Methods are private; not intended to be implemented outside of cxxbridge
-// codebase.
+/// Trait bound for types which may be used as the `T` inside of a `WeakPtr<T>`
+/// in generic code.
+///
+/// This trait has no publicly callable or implementable methods. Implementing
+/// it outside of the CXX codebase is not supported.
 pub unsafe trait WeakPtrTarget {
     #[doc(hidden)]
     fn __typename(f: &mut fmt::Formatter) -> fmt::Result;

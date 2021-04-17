@@ -150,15 +150,15 @@ fn test_c_take() {
     check!(ffi::c_take_unique_ptr_string(
         ffi::c_return_unique_ptr_string()
     ));
-    check!(ffi::c_take_unique_ptr_vector_u8(
-        ffi::c_return_unique_ptr_vector_u8()
-    ));
-    check!(ffi::c_take_unique_ptr_vector_f64(
-        ffi::c_return_unique_ptr_vector_f64()
-    ));
-    check!(ffi::c_take_unique_ptr_vector_shared(
-        ffi::c_return_unique_ptr_vector_shared()
-    ));
+    let mut vector = ffi::c_return_unique_ptr_vector_u8();
+    assert_eq!(vector.pin_mut().pop(), Some(9));
+    check!(ffi::c_take_unique_ptr_vector_u8(vector));
+    let mut vector = ffi::c_return_unique_ptr_vector_f64();
+    vector.pin_mut().push(9.0);
+    check!(ffi::c_take_unique_ptr_vector_f64(vector));
+    let mut vector = ffi::c_return_unique_ptr_vector_shared();
+    vector.pin_mut().push(ffi::Shared { z: 9 });
+    check!(ffi::c_take_unique_ptr_vector_shared(vector));
     check!(ffi::c_take_ref_vector(&ffi::c_return_unique_ptr_vector_u8()));
     let test_vec = [86_u8, 75_u8, 30_u8, 9_u8].to_vec();
     check!(ffi::c_take_rust_vec(test_vec.clone()));

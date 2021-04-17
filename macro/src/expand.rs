@@ -773,9 +773,9 @@ fn expand_function_pointer_trampoline(
                     fn trampoline();
                 }
                 #shim
-                trampoline as usize as *const ()
+                trampoline as usize as *const ::std::ffi::c_void
             },
-            ptr: #var as usize as *const (),
+            ptr: #var as usize as *const ::std::ffi::c_void,
         };
     }
 }
@@ -1302,9 +1302,7 @@ fn expand_unique_ptr(
 
     let (impl_generics, ty_generics) = generics::split_for_impl(key, explicit_impl, resolve);
 
-    let can_construct_from_value = types.structs.contains_key(ident)
-        || types.enums.contains_key(ident)
-        || types.aliases.contains_key(ident);
+    let can_construct_from_value = types.is_maybe_trivial(ident);
     let new_method = if can_construct_from_value {
         Some(quote! {
             #[doc(hidden)]
@@ -1398,9 +1396,7 @@ fn expand_shared_ptr(
 
     let (impl_generics, ty_generics) = generics::split_for_impl(key, explicit_impl, resolve);
 
-    let can_construct_from_value = types.structs.contains_key(ident)
-        || types.enums.contains_key(ident)
-        || types.aliases.contains_key(ident);
+    let can_construct_from_value = types.is_maybe_trivial(ident);
     let new_method = if can_construct_from_value {
         Some(quote! {
             #[doc(hidden)]
@@ -1541,6 +1537,8 @@ fn expand_cxx_vector(
     let prefix = format!("cxxbridge1$std$vector${}$", resolve.name.to_symbol());
     let link_size = format!("{}size", prefix);
     let link_get_unchecked = format!("{}get_unchecked", prefix);
+    let link_push_back = format!("{}push_back", prefix);
+    let link_pop_back = format!("{}pop_back", prefix);
     let unique_ptr_prefix = format!(
         "cxxbridge1$unique_ptr$std$vector${}$",
         resolve.name.to_symbol(),
@@ -1556,6 +1554,42 @@ fn expand_cxx_vector(
     let begin_span = explicit_impl.map_or(key.begin_span, |explicit| explicit.impl_token.span);
     let end_span = explicit_impl.map_or(key.end_span, |explicit| explicit.brace_token.span);
     let unsafe_token = format_ident!("unsafe", span = begin_span);
+
+    let can_pass_element_by_value = types.is_maybe_trivial(elem);
+    let by_value_methods = if can_pass_element_by_value {
+        Some(quote_spanned! {end_span=>
+            #[doc(hidden)]
+            unsafe fn __push_back(
+                this: ::std::pin::Pin<&mut ::cxx::CxxVector<Self>>,
+                value: &mut ::std::mem::ManuallyDrop<Self>,
+            ) {
+                extern "C" {
+                    #[link_name = #link_push_back]
+                    fn __push_back #impl_generics(
+                        this: ::std::pin::Pin<&mut ::cxx::CxxVector<#elem #ty_generics>>,
+                        value: &mut ::std::mem::ManuallyDrop<#elem #ty_generics>,
+                    );
+                }
+                __push_back(this, value);
+            }
+            #[doc(hidden)]
+            unsafe fn __pop_back(
+                this: ::std::pin::Pin<&mut ::cxx::CxxVector<Self>>,
+                out: &mut ::std::mem::MaybeUninit<Self>,
+            ) {
+                extern "C" {
+                    #[link_name = #link_pop_back]
+                    fn __pop_back #impl_generics(
+                        this: ::std::pin::Pin<&mut ::cxx::CxxVector<#elem #ty_generics>>,
+                        out: &mut ::std::mem::MaybeUninit<#elem #ty_generics>,
+                    );
+                }
+                __pop_back(this, out);
+            }
+        })
+    } else {
+        None
+    };
 
     quote_spanned! {end_span=>
         #unsafe_token impl #impl_generics ::cxx::private::VectorElement for #elem #ty_generics {
@@ -1579,6 +1613,7 @@ fn expand_cxx_vector(
                 }
                 __get_unchecked(v, pos)
             }
+            #by_value_methods
             #[doc(hidden)]
             fn __unique_ptr_null() -> *mut ::std::ffi::c_void {
                 extern "C" {
