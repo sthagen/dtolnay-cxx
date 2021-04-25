@@ -32,9 +32,12 @@ pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let content = mem::take(&mut ffi.content);
     let trusted = ffi.unsafety.is_some();
     let namespace = &ffi.namespace;
-    let ref apis = syntax::parse_items(errors, content, trusted, namespace);
+    let ref mut apis = syntax::parse_items(errors, content, trusted, namespace);
+    #[cfg(feature = "experimental")]
+    crate::clang::load(errors, apis);
     let ref types = Types::collect(errors, apis);
     errors.propagate()?;
+
     let generator = check::Generator::Macro;
     check::typecheck(errors, apis, types, generator);
     errors.propagate()?;
@@ -132,6 +135,7 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
         #doc
         #attrs
         #[deny(improper_ctypes, improper_ctypes_definitions)]
+        #[allow(clippy::unknown_clippy_lints)]
         #[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
         #vis #mod_token #ident #expanded
     }
@@ -289,7 +293,7 @@ fn expand_enum(enm: &Enum) -> TokenStream {
     let ident = &enm.name.rust;
     let doc = &enm.doc;
     let attrs = &enm.attrs;
-    let repr = enm.repr;
+    let repr = &enm.repr;
     let type_id = type_id(&enm.name);
     let variants = enm.variants.iter().map(|variant| {
         let doc = &variant.doc;
@@ -982,14 +986,22 @@ fn expand_rust_function_shim_impl(
             _ => quote!(#var),
         }
     });
-    let vars = receiver_var.into_iter().chain(arg_vars);
+    let vars: Vec<_> = receiver_var.into_iter().chain(arg_vars).collect();
 
     let wrap_super = invoke.map(|invoke| expand_rust_function_shim_super(sig, &local_name, invoke));
 
+    let mut requires_closure;
     let mut call = match invoke {
-        Some(_) => quote!(#local_name),
-        None => quote!(::std::mem::transmute::<*const (), #sig>(__extern)),
+        Some(_) => {
+            requires_closure = false;
+            quote!(#local_name)
+        }
+        None => {
+            requires_closure = true;
+            quote!(::std::mem::transmute::<*const (), #sig>(__extern))
+        }
     };
+    requires_closure |= !vars.is_empty();
     call.extend(quote! { (#(#vars),*) });
 
     let span = body_span;
@@ -1031,8 +1043,14 @@ fn expand_rust_function_shim_impl(
 
     let mut expr = match conversion {
         None => call,
-        Some(conversion) if !sig.throws => quote_spanned!(span=> #conversion(#call)),
-        Some(conversion) => quote_spanned!(span=> ::std::result::Result::map(#call, #conversion)),
+        Some(conversion) if !sig.throws => {
+            requires_closure = true;
+            quote_spanned!(span=> #conversion(#call))
+        }
+        Some(conversion) => {
+            requires_closure = true;
+            quote_spanned!(span=> ::std::result::Result::map(#call, #conversion))
+        }
     };
 
     let mut outparam = None;
@@ -1046,12 +1064,20 @@ fn expand_rust_function_shim_impl(
             Some(_) => quote_spanned!(span=> __return),
             None => quote_spanned!(span=> &mut ()),
         };
+        requires_closure = true;
         expr = quote_spanned!(span=> ::cxx::private::r#try(#out, #expr));
     } else if indirect_return {
+        requires_closure = true;
         expr = quote_spanned!(span=> ::std::ptr::write(__return, #expr));
     }
 
-    expr = quote_spanned!(span=> ::cxx::private::catch_unwind(__fn, move || #expr));
+    let closure = if requires_closure {
+        quote_spanned!(span=> move || #expr)
+    } else {
+        quote!(#local_name)
+    };
+
+    expr = quote_spanned!(span=> ::cxx::private::catch_unwind(__fn, #closure));
 
     let ret = if sig.throws {
         quote!(-> ::cxx::private::Result)
