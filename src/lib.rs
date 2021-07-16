@@ -364,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.46")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.49")]
 #![deny(improper_ctypes, improper_ctypes_definitions, missing_docs)]
 #![allow(non_camel_case_types)]
 #![allow(
@@ -486,3 +486,6 @@ chars! {
     a b c d e f g h i j k l m n o p q r s t u v w x y z
     __ // underscore
 }
+
+#[repr(transparent)]
+struct void(core::ffi::c_void);

@@ -57,11 +57,10 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clang-ast"
-version = "0.1.0"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06a1f20328a0881a6a6198d7320ac202af537cf671542078c6896cd21f1df394"
+checksum = "7c215e0240d39ecb846f717632498006e87ab01a99273e101737b4659c95803b"
 dependencies = [
- "once_cell",
  "serde",
 ]
 
@@ -101,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "cxx"
-version = "1.0.46"
+version = "1.0.49"
 dependencies = [
  "cc",
  "cxx-build",
@@ -116,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "cxx-build"
-version = "1.0.46"
+version = "1.0.49"
 dependencies = [
  "cc",
  "codespan-reporting",
@@ -131,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "cxx-gen"
-version = "0.7.46"
+version = "0.7.49"
 dependencies = [
  "cc",
  "codespan-reporting",
@@ -151,7 +150,7 @@ dependencies = [
 
 [[package]]
 name = "cxxbridge-cmd"
-version = "1.0.46"
+version = "1.0.49"
 dependencies = [
  "clap",
  "codespan-reporting",
@@ -162,11 +161,11 @@ dependencies = [
 
 [[package]]
 name = "cxxbridge-flags"
-version = "1.0.46"
+version = "1.0.49"
 
 [[package]]
 name = "cxxbridge-macro"
-version = "1.0.46"
+version = "1.0.49"
 dependencies = [
  "clang-ast",
  "cxx",
@@ -243,9 +242,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.93"
+version = "0.2.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9385f66bf6105b241aa65a61cb923ef20efc665cb9f9bb50ac2f0c4b7f378d41"
+checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 
 [[package]]
 name = "link-cplusplus"
@@ -275,12 +274,6 @@ dependencies = [
  "adler",
  "autocfg",
 ]
-
-[[package]]
-name = "once_cell"
-version = "1.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
 
 [[package]]
 name = "pkg-config"
@@ -363,9 +356,9 @@ checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
 name = "syn"
-version = "1.0.70"
+version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9505f307c872bab8eb46f77ae357c8eba1fdacead58ee5a850116b1d7f82883"
+checksum = "ad184cc9470f9117b2ac6817bfe297307418819ba40552f9b3846f05c33d5373"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -422,9 +415,9 @@ checksum = "9337591893a19b88d8d87f2cec1e73fad5cdfd10e5a6f349f498ad6ea2ffb1e3"
 
 [[package]]
 name = "unicode-xid"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
+checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
 name = "vec_map"

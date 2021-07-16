@@ -34,7 +34,7 @@ pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let namespace = &ffi.namespace;
     let ref mut apis = syntax::parse_items(errors, content, trusted, namespace);
     #[cfg(feature = "experimental")]
-    crate::clang::load(errors, apis);
+    crate::load::load(errors, apis);
     let ref types = Types::collect(errors, apis);
     errors.propagate()?;
 
@@ -1332,12 +1332,12 @@ fn expand_unique_ptr(
     let new_method = if can_construct_from_value {
         Some(quote! {
             #[doc(hidden)]
-            fn __new(value: Self) -> *mut ::std::ffi::c_void {
+            fn __new(value: Self) -> ::std::mem::MaybeUninit<*mut ::std::ffi::c_void> {
                 extern "C" {
                     #[link_name = #link_uninit]
-                    fn __uninit(this: *mut *mut ::std::ffi::c_void) -> *mut ::std::ffi::c_void;
+                    fn __uninit(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *mut ::std::ffi::c_void;
                 }
-                let mut repr = ::std::ptr::null_mut::<::std::ffi::c_void>();
+                let mut repr = ::std::mem::MaybeUninit::uninit();
                 unsafe { __uninit(&mut repr).cast::<#ident #ty_generics>().write(value) }
                 repr
             }
@@ -1357,47 +1357,47 @@ fn expand_unique_ptr(
                 f.write_str(#name)
             }
             #[doc(hidden)]
-            fn __null() -> *mut ::std::ffi::c_void {
+            fn __null() -> ::std::mem::MaybeUninit<*mut ::std::ffi::c_void> {
                 extern "C" {
                     #[link_name = #link_null]
-                    fn __null(this: *mut *mut ::std::ffi::c_void);
+                    fn __null(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>);
                 }
-                let mut repr = ::std::ptr::null_mut::<::std::ffi::c_void>();
+                let mut repr = ::std::mem::MaybeUninit::uninit();
                 unsafe { __null(&mut repr) }
                 repr
             }
             #new_method
             #[doc(hidden)]
-            unsafe fn __raw(raw: *mut Self) -> *mut ::std::ffi::c_void {
+            unsafe fn __raw(raw: *mut Self) -> ::std::mem::MaybeUninit<*mut ::std::ffi::c_void> {
                 extern "C" {
                     #[link_name = #link_raw]
-                    fn __raw(this: *mut *mut ::std::ffi::c_void, raw: *mut ::std::ffi::c_void);
+                    fn __raw(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>, raw: *mut ::std::ffi::c_void);
                 }
-                let mut repr = ::std::ptr::null_mut::<::std::ffi::c_void>();
+                let mut repr = ::std::mem::MaybeUninit::uninit();
                 __raw(&mut repr, raw.cast());
                 repr
             }
             #[doc(hidden)]
-            unsafe fn __get(repr: *mut ::std::ffi::c_void) -> *const Self {
+            unsafe fn __get(repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *const Self {
                 extern "C" {
                     #[link_name = #link_get]
-                    fn __get(this: *const *mut ::std::ffi::c_void) -> *const ::std::ffi::c_void;
+                    fn __get(this: *const ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *const ::std::ffi::c_void;
                 }
                 __get(&repr).cast()
             }
             #[doc(hidden)]
-            unsafe fn __release(mut repr: *mut ::std::ffi::c_void) -> *mut Self {
+            unsafe fn __release(mut repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *mut Self {
                 extern "C" {
                     #[link_name = #link_release]
-                    fn __release(this: *mut *mut ::std::ffi::c_void) -> *mut ::std::ffi::c_void;
+                    fn __release(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *mut ::std::ffi::c_void;
                 }
                 __release(&mut repr).cast()
             }
             #[doc(hidden)]
-            unsafe fn __drop(mut repr: *mut ::std::ffi::c_void) {
+            unsafe fn __drop(mut repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) {
                 extern "C" {
                     #[link_name = #link_drop]
-                    fn __drop(this: *mut *mut ::std::ffi::c_void);
+                    fn __drop(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>);
                 }
                 __drop(&mut repr);
             }
@@ -1593,10 +1593,10 @@ fn expand_cxx_vector(
                     #[link_name = #link_push_back]
                     fn __push_back #impl_generics(
                         this: ::std::pin::Pin<&mut ::cxx::CxxVector<#elem #ty_generics>>,
-                        value: &mut ::std::mem::ManuallyDrop<#elem #ty_generics>,
+                        value: *mut ::std::ffi::c_void,
                     );
                 }
-                __push_back(this, value);
+                __push_back(this, value as *mut ::std::mem::ManuallyDrop<Self> as *mut ::std::ffi::c_void);
             }
             #[doc(hidden)]
             unsafe fn __pop_back(
@@ -1607,10 +1607,10 @@ fn expand_cxx_vector(
                     #[link_name = #link_pop_back]
                     fn __pop_back #impl_generics(
                         this: ::std::pin::Pin<&mut ::cxx::CxxVector<#elem #ty_generics>>,
-                        out: &mut ::std::mem::MaybeUninit<#elem #ty_generics>,
+                        out: *mut ::std::ffi::c_void,
                     );
                 }
-                __pop_back(this, out);
+                __pop_back(this, out as *mut ::std::mem::MaybeUninit<Self> as *mut ::std::ffi::c_void);
             }
         })
     } else {
@@ -1635,52 +1635,55 @@ fn expand_cxx_vector(
             unsafe fn __get_unchecked(v: *mut ::cxx::CxxVector<Self>, pos: usize) -> *mut Self {
                 extern "C" {
                     #[link_name = #link_get_unchecked]
-                    fn __get_unchecked #impl_generics(_: *mut ::cxx::CxxVector<#elem #ty_generics>, _: usize) -> *mut #elem #ty_generics;
+                    fn __get_unchecked #impl_generics(
+                        v: *mut ::cxx::CxxVector<#elem #ty_generics>,
+                        pos: usize,
+                    ) -> *mut ::std::ffi::c_void;
                 }
-                __get_unchecked(v, pos)
+                __get_unchecked(v, pos) as *mut Self
             }
             #by_value_methods
             #[doc(hidden)]
-            fn __unique_ptr_null() -> *mut ::std::ffi::c_void {
+            fn __unique_ptr_null() -> ::std::mem::MaybeUninit<*mut ::std::ffi::c_void> {
                 extern "C" {
                     #[link_name = #link_unique_ptr_null]
-                    fn __unique_ptr_null(this: *mut *mut ::std::ffi::c_void);
+                    fn __unique_ptr_null(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>);
                 }
-                let mut repr = ::std::ptr::null_mut::<::std::ffi::c_void>();
+                let mut repr = ::std::mem::MaybeUninit::uninit();
                 unsafe { __unique_ptr_null(&mut repr) }
                 repr
             }
             #[doc(hidden)]
-            unsafe fn __unique_ptr_raw(raw: *mut ::cxx::CxxVector<Self>) -> *mut ::std::ffi::c_void {
+            unsafe fn __unique_ptr_raw(raw: *mut ::cxx::CxxVector<Self>) -> ::std::mem::MaybeUninit<*mut ::std::ffi::c_void> {
                 extern "C" {
                     #[link_name = #link_unique_ptr_raw]
-                    fn __unique_ptr_raw #impl_generics(this: *mut *mut ::std::ffi::c_void, raw: *mut ::cxx::CxxVector<#elem #ty_generics>);
+                    fn __unique_ptr_raw #impl_generics(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>, raw: *mut ::cxx::CxxVector<#elem #ty_generics>);
                 }
-                let mut repr = ::std::ptr::null_mut::<::std::ffi::c_void>();
+                let mut repr = ::std::mem::MaybeUninit::uninit();
                 __unique_ptr_raw(&mut repr, raw);
                 repr
             }
             #[doc(hidden)]
-            unsafe fn __unique_ptr_get(repr: *mut ::std::ffi::c_void) -> *const ::cxx::CxxVector<Self> {
+            unsafe fn __unique_ptr_get(repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *const ::cxx::CxxVector<Self> {
                 extern "C" {
                     #[link_name = #link_unique_ptr_get]
-                    fn __unique_ptr_get #impl_generics(this: *const *mut ::std::ffi::c_void) -> *const ::cxx::CxxVector<#elem #ty_generics>;
+                    fn __unique_ptr_get #impl_generics(this: *const ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *const ::cxx::CxxVector<#elem #ty_generics>;
                 }
                 __unique_ptr_get(&repr)
             }
             #[doc(hidden)]
-            unsafe fn __unique_ptr_release(mut repr: *mut ::std::ffi::c_void) -> *mut ::cxx::CxxVector<Self> {
+            unsafe fn __unique_ptr_release(mut repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *mut ::cxx::CxxVector<Self> {
                 extern "C" {
                     #[link_name = #link_unique_ptr_release]
-                    fn __unique_ptr_release #impl_generics(this: *mut *mut ::std::ffi::c_void) -> *mut ::cxx::CxxVector<#elem #ty_generics>;
+                    fn __unique_ptr_release #impl_generics(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) -> *mut ::cxx::CxxVector<#elem #ty_generics>;
                 }
                 __unique_ptr_release(&mut repr)
             }
             #[doc(hidden)]
-            unsafe fn __unique_ptr_drop(mut repr: *mut ::std::ffi::c_void) {
+            unsafe fn __unique_ptr_drop(mut repr: ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>) {
                 extern "C" {
                     #[link_name = #link_unique_ptr_drop]
-                    fn __unique_ptr_drop(this: *mut *mut ::std::ffi::c_void);
+                    fn __unique_ptr_drop(this: *mut ::std::mem::MaybeUninit<*mut ::std::ffi::c_void>);
                 }
                 __unique_ptr_drop(&mut repr);
             }

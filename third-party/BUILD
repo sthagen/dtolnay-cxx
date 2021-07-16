@@ -76,7 +76,7 @@ rust_library(
 
 rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.70/src/**"]),
+    srcs = glob(["vendor/syn-1.0.71/src/**"]),
     crate_features = [
         "clone-impls",
         "derive",
@@ -111,5 +111,5 @@ rust_library(
 
 rust_library(
     name = "unicode-xid",
-    srcs = glob(["vendor/unicode-xid-0.2.1/src/**"]),
+    srcs = glob(["vendor/unicode-xid-0.2.2/src/**"]),
 )
