@@ -1,8 +1,9 @@
 [package]
 name = "cxxbridge-flags"
-version = "1.0.55"
+version = "1.0.56"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2018"
+rust-version = "1.48"
 license = "MIT OR Apache-2.0"
 description = "Compiler configuration of the `cxx` crate (implementation detail)"
 repository = "https://github.com/dtolnay/cxx"
