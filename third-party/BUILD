@@ -12,14 +12,13 @@ rust_library(
 
 rust_library(
     name = "cc",
-    srcs = glob(["vendor/cc-1.0.70/src/**"]),
+    srcs = glob(["vendor/cc-1.0.72/src/**"]),
     visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "clap",
-    srcs = glob(["vendor/clap-2.33.3/src/**"]),
-    edition = "2015",
+    srcs = glob(["vendor/clap-2.34.0/src/**"]),
     visibility = ["//visibility:public"],
     deps = [
         ":bitflags",
@@ -46,7 +45,7 @@ rust_library(
 
 rust_library(
     name = "proc-macro2",
-    srcs = glob(["vendor/proc-macro2-1.0.29/src/**"]),
+    srcs = glob(["vendor/proc-macro2-1.0.32/src/**"]),
     crate_features = [
         "proc-macro",
         "span-locations",
@@ -60,7 +59,7 @@ rust_library(
 
 cargo_build_script(
     name = "proc-macro2@build",
-    srcs = ["vendor/proc-macro2-1.0.29/build.rs"],
+    srcs = ["vendor/proc-macro2-1.0.32/build.rs"],
     crate_features = [
         "proc-macro",
         "span-locations",
@@ -85,7 +84,7 @@ rust_library(
 
 rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.78/src/**"]),
+    srcs = glob(["vendor/syn-1.0.82/src/**"]),
     crate_features = [
         "clone-impls",
         "derive",
@@ -105,7 +104,7 @@ rust_library(
 
 cargo_build_script(
     name = "syn@build",
-    srcs = ["vendor/syn-1.0.78/build.rs"],
+    srcs = ["vendor/syn-1.0.82/build.rs"],
     crate_features = [
         "clone-impls",
         "derive",
