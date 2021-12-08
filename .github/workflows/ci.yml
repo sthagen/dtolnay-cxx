@@ -50,6 +50,12 @@ jobs:
         shell: bash
       - run: cargo run --manifest-path demo/Cargo.toml
       - run: cargo test --workspace --exclude cxx-test-suite
+      - run: cargo check --no-default-features --features alloc
+        env:
+          RUSTFLAGS: --cfg compile_error_if_std --cfg deny_warnings
+      - run: cargo check --no-default-features
+        env:
+          RUSTFLAGS: --cfg compile_error_if_alloc --cfg deny_warnings --cfg cxx_experimental_no_alloc
 
   buck:
     name: Buck
@@ -86,7 +92,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Bazel
         run: |
-          wget -q -O install.sh https://github.com/bazelbuild/bazel/releases/download/4.0.0/bazel-4.0.0-installer-linux-x86_64.sh
+          wget -q -O install.sh https://github.com/bazelbuild/bazel/releases/download/4.2.2/bazel-4.2.2-installer-linux-x86_64.sh
           chmod +x install.sh
           ./install.sh --user
           echo $HOME/bin >> $GITHUB_PATH

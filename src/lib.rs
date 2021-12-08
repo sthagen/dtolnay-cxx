@@ -364,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.57")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.58")]
 #![deny(improper_ctypes, improper_ctypes_definitions, missing_docs)]
 #![cfg_attr(not(no_unsafe_op_in_unsafe_fn_lint), deny(unsafe_op_in_unsafe_fn))]
 #![cfg_attr(no_unsafe_op_in_unsafe_fn_lint, allow(unused_unsafe))]
@@ -395,18 +395,52 @@
 #[cfg(built_with_cargo)]
 extern crate link_cplusplus;
 
-extern crate alloc;
 extern crate self as cxx;
-extern crate std;
+
+#[doc(hidden)]
+pub extern crate core;
+
+#[cfg(feature = "alloc")]
+#[doc(hidden)]
+pub extern crate alloc;
+
+#[cfg(not(feature = "alloc"))]
+extern crate core as alloc;
+
+#[cfg(feature = "std")]
+#[doc(hidden)]
+pub extern crate std;
+
+// Block inadvertent use of items from libstd, which does not otherwise produce
+// a compile-time error on edition 2018+.
+#[cfg(not(feature = "std"))]
+extern crate core as std;
+
+#[cfg(not(any(feature = "alloc", cxx_experimental_no_alloc)))]
+compile_error! {
+    r#"cxx support for no_alloc is incomplete and semver exempt; you must build with at least one of feature="std", feature="alloc", or RUSTFLAGS='--cfg cxx_experimental_no_alloc'"#
+}
+
+#[cfg(all(compile_error_if_alloc, feature = "alloc"))]
+compile_error! {
+    r#"feature="alloc" is unexpectedly enabled"#
+}
+
+#[cfg(all(compile_error_if_std, feature = "std"))]
+compile_error! {
+    r#"feature="std" is unexpectedly enabled"#
+}
 
 #[macro_use]
 mod macros;
 
+mod c_char;
 mod cxx_vector;
 mod exception;
 mod extern_type;
 mod fmt;
 mod function;
+mod hash;
 pub mod memory;
 mod opaque;
 mod result;
@@ -416,6 +450,7 @@ mod rust_string;
 mod rust_type;
 mod rust_vec;
 mod shared_ptr;
+mod sip;
 #[path = "cxx_string.rs"]
 mod string;
 mod symbols;
@@ -426,6 +461,7 @@ pub mod vector;
 mod weak_ptr;
 
 pub use crate::cxx_vector::CxxVector;
+#[cfg(feature = "alloc")]
 pub use crate::exception::Exception;
 pub use crate::extern_type::{kind, ExternType};
 pub use crate::shared_ptr::SharedPtr;
@@ -454,12 +490,16 @@ pub mod private {
     pub use crate::cxx_vector::VectorElement;
     pub use crate::extern_type::{verify_extern_kind, verify_extern_type};
     pub use crate::function::FatFunction;
+    pub use crate::hash::hash;
     pub use crate::opaque::Opaque;
+    #[cfg(feature = "alloc")]
     pub use crate::result::{r#try, Result};
     pub use crate::rust_slice::RustSlice;
     pub use crate::rust_str::RustStr;
+    #[cfg(feature = "alloc")]
     pub use crate::rust_string::RustString;
     pub use crate::rust_type::{ImplBox, ImplVec, RustType};
+    #[cfg(feature = "alloc")]
     pub use crate::rust_vec::RustVec;
     pub use crate::shared_ptr::SharedPtrTarget;
     pub use crate::string::StackString;

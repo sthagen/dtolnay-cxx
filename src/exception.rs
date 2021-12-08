@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 use alloc::boxed::Box;
 use core::fmt::{self, Display};
 
@@ -13,6 +15,7 @@ impl Display for Exception {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for Exception {}
 
 impl Exception {
