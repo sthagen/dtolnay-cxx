@@ -364,10 +364,11 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.58")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.59")]
 #![deny(improper_ctypes, improper_ctypes_definitions, missing_docs)]
 #![cfg_attr(not(no_unsafe_op_in_unsafe_fn_lint), deny(unsafe_op_in_unsafe_fn))]
 #![cfg_attr(no_unsafe_op_in_unsafe_fn_lint, allow(unused_unsafe))]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![allow(non_camel_case_types)]
 #![allow(
     clippy::cognitive_complexity,
@@ -504,7 +505,7 @@ pub mod private {
     pub use crate::shared_ptr::SharedPtrTarget;
     pub use crate::string::StackString;
     pub use crate::unique_ptr::UniquePtrTarget;
-    pub use crate::unwind::catch_unwind;
+    pub use crate::unwind::prevent_unwind;
     pub use crate::weak_ptr::WeakPtrTarget;
     pub use cxxbridge_macro::type_id;
 }

@@ -753,14 +753,14 @@ fn expand_function_pointer_trampoline(
     let c_trampoline = mangle::c_trampoline(efn, var, types);
     let r_trampoline = mangle::r_trampoline(efn, var, types);
     let local_name = parse_quote!(__);
-    let catch_unwind_label = format!("::{}::{}", efn.name.rust, var.rust);
+    let prevent_unwind_label = format!("::{}::{}", efn.name.rust, var.rust);
     let body_span = efn.semi_token.span;
     let shim = expand_rust_function_shim_impl(
         sig,
         types,
         &r_trampoline,
         local_name,
-        catch_unwind_label,
+        prevent_unwind_label,
         None,
         Some(&efn.generics),
         body_span,
@@ -891,7 +891,7 @@ fn expand_rust_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
         None => format_ident!("__{}", efn.name.rust),
         Some(receiver) => format_ident!("__{}__{}", receiver.ty.rust, efn.name.rust),
     };
-    let catch_unwind_label = match &efn.receiver {
+    let prevent_unwind_label = match &efn.receiver {
         None => format!("::{}", efn.name.rust),
         Some(receiver) => format!("::{}::{}", receiver.ty.rust, efn.name.rust),
     };
@@ -902,7 +902,7 @@ fn expand_rust_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
         types,
         &link_name,
         local_name,
-        catch_unwind_label,
+        prevent_unwind_label,
         invoke,
         None,
         body_span,
@@ -914,7 +914,7 @@ fn expand_rust_function_shim_impl(
     types: &Types,
     link_name: &Symbol,
     local_name: Ident,
-    catch_unwind_label: String,
+    prevent_unwind_label: String,
     invoke: Option<&Ident>,
     outer_generics: Option<&Generics>,
     body_span: Span,
@@ -1077,7 +1077,7 @@ fn expand_rust_function_shim_impl(
         quote!(#local_name)
     };
 
-    expr = quote_spanned!(span=> ::cxx::private::catch_unwind(__fn, #closure));
+    expr = quote_spanned!(span=> ::cxx::private::prevent_unwind(__fn, #closure));
 
     let ret = if sig.throws {
         quote!(-> ::cxx::private::Result)
@@ -1094,7 +1094,7 @@ fn expand_rust_function_shim_impl(
         #[doc(hidden)]
         #[export_name = #link_name]
         unsafe extern "C" fn #local_name #generics(#(#all_args,)* #outparam #pointer) #ret {
-            let __fn = concat!(module_path!(), #catch_unwind_label);
+            let __fn = concat!(module_path!(), #prevent_unwind_label);
             #wrap_super
             #expr
         }
@@ -1255,6 +1255,7 @@ fn expand_rust_vec(key: NamedImplKey, types: &Types, explicit_impl: Option<&Impl
     let link_data = format!("{}data", link_prefix);
     let link_reserve_total = format!("{}reserve_total", link_prefix);
     let link_set_len = format!("{}set_len", link_prefix);
+    let link_clear = format!("{}clear", link_prefix);
 
     let local_prefix = format_ident!("{}__vec_", elem);
     let local_new = format_ident!("{}new", local_prefix);
@@ -1264,6 +1265,7 @@ fn expand_rust_vec(key: NamedImplKey, types: &Types, explicit_impl: Option<&Impl
     let local_data = format_ident!("{}data", local_prefix);
     let local_reserve_total = format_ident!("{}reserve_total", local_prefix);
     let local_set_len = format_ident!("{}set_len", local_prefix);
+    let local_clear = format_ident!("{}clear", local_prefix);
 
     let (impl_generics, ty_generics) = generics::split_for_impl(key, explicit_impl, resolve);
 
@@ -1308,6 +1310,11 @@ fn expand_rust_vec(key: NamedImplKey, types: &Types, explicit_impl: Option<&Impl
         #[export_name = #link_set_len]
         unsafe extern "C" fn #local_set_len #impl_generics(this: *mut ::cxx::private::RustVec<#elem #ty_generics>, len: usize) {
             (*this).set_len(len);
+        }
+        #[doc(hidden)]
+        #[export_name = #link_clear]
+        unsafe extern "C" fn #local_clear #impl_generics(this: *mut ::cxx::private::RustVec<#elem #ty_generics>) {
+            (*this).clear();
         }
     }
 }

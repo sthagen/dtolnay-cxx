@@ -47,6 +47,7 @@ public:
   void push_back(T &&value);
   template <typename... Args>
   void emplace_back(Args &&...args);
+  void clear();
 
   class iterator;
   iterator begin() noexcept;
