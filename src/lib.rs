@@ -364,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.59")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.60")]
 #![deny(improper_ctypes, improper_ctypes_definitions, missing_docs)]
 #![cfg_attr(not(no_unsafe_op_in_unsafe_fn_lint), deny(unsafe_op_in_unsafe_fn))]
 #![cfg_attr(no_unsafe_op_in_unsafe_fn_lint, allow(unused_unsafe))]
@@ -442,6 +442,7 @@ mod extern_type;
 mod fmt;
 mod function;
 mod hash;
+mod lossy;
 pub mod memory;
 mod opaque;
 mod result;
@@ -507,6 +508,7 @@ pub mod private {
     pub use crate::unique_ptr::UniquePtrTarget;
     pub use crate::unwind::prevent_unwind;
     pub use crate::weak_ptr::WeakPtrTarget;
+    pub use core::{concat, module_path};
     pub use cxxbridge_macro::type_id;
 }
 
