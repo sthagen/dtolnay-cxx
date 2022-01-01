@@ -1477,7 +1477,7 @@ fn write_rust_vec_extern(out: &mut OutFile, key: NamedImplKey) {
     );
     writeln!(
         out,
-        "void cxxbridge1$rust_vec${}$clear(::rust::Vec<{}> *ptr) noexcept;",
+        "void cxxbridge1$rust_vec${}$truncate(::rust::Vec<{}> *ptr, ::std::size_t len) noexcept;",
         instance, inner,
     );
 }
@@ -1593,10 +1593,10 @@ fn write_rust_vec_impl(out: &mut OutFile, key: NamedImplKey) {
 
     writeln!(out, "template <>");
     begin_function_definition(out);
-    writeln!(out, "void Vec<{}>::clear() {{", inner);
+    writeln!(out, "void Vec<{}>::truncate(::std::size_t len) {{", inner,);
     writeln!(
         out,
-        "  return cxxbridge1$rust_vec${}$clear(this);",
+        "  return cxxbridge1$rust_vec${}$truncate(this, len);",
         instance,
     );
     writeln!(out, "}}");

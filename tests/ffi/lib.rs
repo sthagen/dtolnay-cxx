@@ -103,6 +103,7 @@ pub mod ffi {
         fn c_return_slice_char(shared: &Shared) -> &[c_char];
         fn c_return_mutsliceu8(slice: &mut [u8]) -> &mut [u8];
         fn c_return_rust_string() -> String;
+        fn c_return_rust_string_lossy() -> String;
         fn c_return_unique_ptr_string() -> UniquePtr<CxxString>;
         fn c_return_unique_ptr_vector_u8() -> UniquePtr<CxxVector<u8>>;
         fn c_return_unique_ptr_vector_f64() -> UniquePtr<CxxVector<f64>>;
@@ -149,6 +150,7 @@ pub mod ffi {
         fn c_take_rust_vec_index(v: Vec<u8>);
         fn c_take_rust_vec_shared_index(v: Vec<Shared>);
         fn c_take_rust_vec_shared_push(v: Vec<Shared>);
+        fn c_take_rust_vec_shared_truncate(v: Vec<Shared>);
         fn c_take_rust_vec_shared_clear(v: Vec<Shared>);
         fn c_take_rust_vec_shared_forward_iterator(v: Vec<Shared>);
         fn c_take_rust_vec_shared_sort(v: Vec<Shared>);

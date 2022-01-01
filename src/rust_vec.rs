@@ -69,8 +69,8 @@ impl<T> RustVec<T> {
         unsafe { self.as_mut_vec().set_len(len) }
     }
 
-    pub fn clear(&mut self) {
-        self.as_mut_vec().clear();
+    pub fn truncate(&mut self, len: usize) {
+        self.as_mut_vec().truncate(len);
     }
 }
 
