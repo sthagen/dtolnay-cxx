@@ -1,5 +1,6 @@
 use crate::syntax::atom::Atom::*;
 use crate::syntax::attrs::{self, OtherAttrs};
+use crate::syntax::cfg::CfgExpr;
 use crate::syntax::file::Module;
 use crate::syntax::instantiate::{ImplKey, NamedImplKey};
 use crate::syntax::qualified::QualifiedName;
@@ -19,11 +20,13 @@ use syn::{parse_quote, punctuated, Generics, Lifetime, Result, Token};
 pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
 
+    let mut cfg = CfgExpr::Unconditional;
     let mut doc = Doc::new();
     let attrs = attrs::parse(
         errors,
         mem::take(&mut ffi.attrs),
         attrs::Parser {
+            cfg: Some(&mut cfg),
             doc: Some(&mut doc),
             ..Default::default()
         },
@@ -33,7 +36,7 @@ pub fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let trusted = ffi.unsafety.is_some();
     let namespace = &ffi.namespace;
     let ref mut apis = syntax::parse_items(errors, content, trusted, namespace);
-    #[cfg(feature = "experimental")]
+    #[cfg(feature = "experimental-enum-variants-from-header")]
     crate::load::load(errors, apis);
     let ref types = Types::collect(errors, apis);
     errors.propagate()?;

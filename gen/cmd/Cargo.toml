@@ -1,6 +1,6 @@
 [package]
 name = "cxxbridge-cmd"
-version = "1.0.62"
+version = "1.0.63"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2018"
 rust-version = "1.54"
@@ -15,6 +15,10 @@ categories = ["development-tools::ffi"]
 [[bin]]
 name = "cxxbridge"
 path = "src/main.rs"
+
+[features]
+# incomplete features that are not covered by a compatibility guarantee:
+experimental-async-fn = []
 
 [dependencies]
 clap = { version = "3.0", default-features = false, features = ["std", "suggestions"] }
