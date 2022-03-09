@@ -12,13 +12,13 @@ rust_library(
 
 rust_library(
     name = "cc",
-    srcs = glob(["vendor/cc-1.0.72/src/**"]),
+    srcs = glob(["vendor/cc-1.0.73/src/**"]),
     visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "clap",
-    srcs = glob(["vendor/clap-3.0.10/src/**"]),
+    srcs = glob(["vendor/clap-3.1.6/src/**"]),
     crate_features = ["std"],
     visibility = ["//visibility:public"],
     deps = [
@@ -61,7 +61,7 @@ rust_library(
 
 rust_library(
     name = "once_cell",
-    srcs = glob(["vendor/once_cell-1.9.0/src/**"]),
+    srcs = glob(["vendor/once_cell-1.10.0/src/**"]),
     crate_features = [
         "alloc",
         "std",
@@ -105,7 +105,7 @@ cargo_build_script(
 
 rust_library(
     name = "quote",
-    srcs = glob(["vendor/quote-1.0.14/src/**"]),
+    srcs = glob(["vendor/quote-1.0.15/src/**"]),
     crate_features = ["proc-macro"],
     visibility = ["//visibility:public"],
     deps = [":proc-macro2"],
@@ -120,7 +120,7 @@ rust_library(
 
 rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.85/src/**"]),
+    srcs = glob(["vendor/syn-1.0.86/src/**"]),
     crate_features = [
         "clone-impls",
         "derive",
@@ -140,7 +140,7 @@ rust_library(
 
 cargo_build_script(
     name = "syn@build",
-    srcs = ["vendor/syn-1.0.85/build.rs"],
+    srcs = ["vendor/syn-1.0.86/build.rs"],
     crate_features = [
         "clone-impls",
         "derive",
@@ -154,12 +154,12 @@ cargo_build_script(
 
 rust_library(
     name = "termcolor",
-    srcs = glob(["vendor/termcolor-1.1.2/src/**"]),
+    srcs = glob(["vendor/termcolor-1.1.3/src/**"]),
 )
 
 rust_library(
     name = "textwrap",
-    srcs = glob(["vendor/textwrap-0.14.2/src/**"]),
+    srcs = glob(["vendor/textwrap-0.15.0/src/**"]),
     deps = [":unicode-width"],
 )
 
