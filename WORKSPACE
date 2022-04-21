@@ -4,20 +4,21 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "rules_rust",
-    sha256 = "29fee78077bd8c6477bc895a47e6c759f92df0735ed60587e1da7b51f53d26eb",
-    strip_prefix = "rules_rust-23a4631cad819003642b1a148e458fe4ed2c54e1",
+    sha256 = "29954bced3e0d1a57ff8db816f5cd8a5856179fc657455729f1eb53b39611419",
+    strip_prefix = "rules_rust-6e1cbbfcd0d140baacc8ff1080f885d2a45296a9",
     urls = [
-        # Main branch as of 2021-12-07
-        "https://github.com/bazelbuild/rules_rust/archive/23a4631cad819003642b1a148e458fe4ed2c54e1.tar.gz",
+        # PR https://github.com/bazelbuild/rules_rust/pull/1254
+        # on top of the main branch as of 2022-04-10
+        "https://github.com/bazelbuild/rules_rust/archive/6e1cbbfcd0d140baacc8ff1080f885d2a45296a9.tar.gz",
     ],
 )
 
 load("@rules_rust//rust:repositories.bzl", "rust_repositories")
 
-RUST_VERSION = "1.57.0"
+RUST_VERSION = "1.60.0"
 
 rust_repositories(
-    edition = "2018",
+    edition = "required",
     version = RUST_VERSION,
 )
 
