@@ -17,21 +17,24 @@ def _impl(repository_ctx):
     root_lockfile = repository_ctx.path("workspace/Cargo.lock")
     _copy_file(repository_ctx, src = vendor_lockfile, dst = root_lockfile)
 
-    is_mac = "mac" in repository_ctx.os.name
-    is_arm = "arm" in getattr(repository_ctx.os, "arch", "")
     # Figure out which version of cargo to use.
     if repository_ctx.attr.target_triple:
         target_triple = repository_ctx.attr.target_triple
-    elif is_mac and is_arm:
-         target_triple = "aarch64-apple-darwin"
-    elif is_mac:
-         target_triple = "x86_64-apple-darwin"
-    elif "windows" in repository_ctx.os.name:
-        target_triple = "x86_64-pc-windows-msvc"
-    elif is_arm:
-        target_triple = "aarch64-unknown-linux-gnu"
     else:
-        target_triple = "x86_64-unknown-linux-gnu"
+        if "mac" in repository_ctx.os.name:
+            triple_os = "apple-darwin"
+        elif "windows" in repository_ctx.os.name:
+            triple_os = "pc-windows-msvc"
+        else:
+            triple_os = "unknown-linux-gnu"
+
+        # FIXME can we just use `triple_arch = repository_ctx.os.arch`?
+        if "aarch64" in getattr(repository_ctx.os, "arch", ""):
+            triple_arch = "aarch64"
+        else:
+            triple_arch = "x86_64"
+
+        target_triple = "{}-{}".format(triple_arch, triple_os)
 
     # Download cargo.
     load_arbitrary_tool(
@@ -84,7 +87,6 @@ vendor = repository_rule(
     attrs = {
         "cargo_version": attr.string(
             doc = "The version of cargo to use",
-            default = rust_common.default_version,
         ),
         "cargo_iso_date": attr.string(
             doc = "The date of the tool (or None, if the version is a specific version)",
