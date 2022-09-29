@@ -20,22 +20,25 @@ rust_library(
 
 rust_library(
     name = "clap",
-    srcs = glob(["vendor/clap-3.2.20/src/**/*.rs"]) + ["vendor/clap-3.2.20/examples/demo.rs"],
-    crate_features = ["std"],
-    data = ["vendor/clap-3.2.20/examples/demo.md"],
+    srcs = glob(["vendor/clap-4.0.2/src/**/*.rs"]) + ["vendor/clap-4.0.2/examples/demo.rs"],
+    crate_features = [
+        "error-context",
+        "help",
+        "std",
+        "usage",
+    ],
+    data = ["vendor/clap-4.0.2/examples/demo.md"],
     edition = "2021",
     visibility = ["//visibility:public"],
     deps = [
         ":bitflags",
         ":clap_lex",
-        ":indexmap",
-        ":textwrap",
     ],
 )
 
 rust_library(
     name = "clap_lex",
-    srcs = glob(["vendor/clap_lex-0.2.4/src/**/*.rs"]),
+    srcs = glob(["vendor/clap_lex-0.3.0/src/**/*.rs"]),
     edition = "2021",
     deps = [
         ":os_str_bytes",
@@ -54,24 +57,8 @@ rust_library(
 )
 
 rust_library(
-    name = "hashbrown",
-    srcs = glob(["vendor/hashbrown-0.12.3/src/**/*.rs"]),
-    crate_features = ["raw"],
-    edition = "2021",
-)
-
-rust_library(
-    name = "indexmap",
-    srcs = glob(["vendor/indexmap-1.9.1/src/**/*.rs"]),
-    crate_features = ["std"],
-    edition = "2021",
-    rustc_flags = ["--cfg=has_std"],
-    deps = [":hashbrown"],
-)
-
-rust_library(
     name = "once_cell",
-    srcs = glob(["vendor/once_cell-1.14.0/src/**/*.rs"]),
+    srcs = glob(["vendor/once_cell-1.15.0/src/**/*.rs"]),
     crate_features = [
         "alloc",
         "std",
@@ -91,7 +78,7 @@ rust_library(
 
 rust_library(
     name = "proc-macro2",
-    srcs = glob(["vendor/proc-macro2-1.0.43/src/**/*.rs"]),
+    srcs = glob(["vendor/proc-macro2-1.0.45/src/**/*.rs"]),
     crate_features = [
         "proc-macro",
         "span-locations",
@@ -106,7 +93,7 @@ rust_library(
 
 cargo_build_script(
     name = "proc-macro2@build",
-    srcs = ["vendor/proc-macro2-1.0.43/build.rs"],
+    srcs = ["vendor/proc-macro2-1.0.45/build.rs"],
     crate_features = [
         "proc-macro",
         "span-locations",
@@ -145,7 +132,7 @@ rust_library(
 
 rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.99/src/**/*.rs"]),
+    srcs = glob(["vendor/syn-1.0.101/src/**/*.rs"]),
     crate_features = [
         "clone-impls",
         "derive",
@@ -166,7 +153,7 @@ rust_library(
 
 cargo_build_script(
     name = "syn@build",
-    srcs = ["vendor/syn-1.0.99/build.rs"],
+    srcs = ["vendor/syn-1.0.101/build.rs"],
     crate_features = [
         "clone-impls",
         "derive",
@@ -186,20 +173,13 @@ rust_library(
 )
 
 rust_library(
-    name = "textwrap",
-    srcs = glob(["vendor/textwrap-0.15.0/src/**/*.rs"]),
-    edition = "2018",
-    deps = [":unicode-width"],
-)
-
-rust_library(
     name = "unicode-ident",
-    srcs = glob(["vendor/unicode-ident-1.0.3/src/**/*.rs"]),
+    srcs = glob(["vendor/unicode-ident-1.0.4/src/**/*.rs"]),
     edition = "2018",
 )
 
 rust_library(
     name = "unicode-width",
-    srcs = glob(["vendor/unicode-width-0.1.9/src/**/*.rs"]),
+    srcs = glob(["vendor/unicode-width-0.1.10/src/**/*.rs"]),
     edition = "2018",
 )
