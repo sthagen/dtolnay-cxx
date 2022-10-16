@@ -1,6 +1,6 @@
 [package]
 name = "cxx-build"
-version = "1.0.78"
+version = "1.0.79"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 categories = ["development-tools::build-utils", "development-tools::ffi"]
 description = "C++ code generator for integrating `cxx` crate into a Cargo build."
@@ -19,7 +19,7 @@ experimental-async-fn = []
 
 [dependencies]
 cc = "1.0.49"
-codespan-reporting = "0.11"
+codespan-reporting = "0.11.1"
 once_cell = "1.9"
 proc-macro2 = { version = "1.0.39", default-features = false, features = ["span-locations"] }
 quote = { version = "1.0", default-features = false }
