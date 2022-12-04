@@ -13,21 +13,21 @@ rust_library(
 
 rust_library(
     name = "cc",
-    srcs = glob(["vendor/cc-1.0.76/src/**/*.rs"]),
+    srcs = glob(["vendor/cc-1.0.77/src/**/*.rs"]),
     edition = "2018",
     visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "clap",
-    srcs = glob(["vendor/clap-4.0.26/src/**/*.rs"]) + ["vendor/clap-4.0.26/examples/demo.rs"],
+    srcs = glob(["vendor/clap-4.0.29/src/**/*.rs"]) + ["vendor/clap-4.0.29/examples/demo.rs"],
     crate_features = [
         "error-context",
         "help",
         "std",
         "usage",
     ],
-    data = ["vendor/clap-4.0.26/examples/demo.md"],
+    data = ["vendor/clap-4.0.29/examples/demo.md"],
     edition = "2021",
     visibility = ["//visibility:public"],
     deps = [
@@ -61,15 +61,17 @@ rust_library(
     srcs = glob(["vendor/once_cell-1.16.0/src/**/*.rs"]),
     crate_features = [
         "alloc",
+        "default",
+        "race",
         "std",
     ],
-    edition = "2018",
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "os_str_bytes",
-    srcs = glob(["vendor/os_str_bytes-6.4.0/src/**/*.rs"]),
+    srcs = glob(["vendor/os_str_bytes-6.4.1/src/**/*.rs"]),
     crate_features = [
         "raw_os_str",
     ],
@@ -80,6 +82,7 @@ rust_library(
     name = "proc-macro2",
     srcs = glob(["vendor/proc-macro2-1.0.47/src/**/*.rs"]),
     crate_features = [
+        "default",
         "proc-macro",
         "span-locations",
     ],
@@ -95,6 +98,7 @@ cargo_build_script(
     name = "proc-macro2@build",
     srcs = ["vendor/proc-macro2-1.0.47/build.rs"],
     crate_features = [
+        "default",
         "proc-macro",
         "span-locations",
     ],
@@ -105,7 +109,10 @@ cargo_build_script(
 rust_library(
     name = "quote",
     srcs = glob(["vendor/quote-1.0.21/src/**/*.rs"]),
-    crate_features = ["proc-macro"],
+    crate_features = [
+        "default",
+        "proc-macro",
+    ],
     edition = "2018",
     visibility = ["//visibility:public"],
     deps = [
@@ -117,7 +124,10 @@ rust_library(
 cargo_build_script(
     name = "quote@build",
     srcs = ["vendor/quote-1.0.21/build.rs"],
-    crate_features = ["proc-macro"],
+    crate_features = [
+        "default",
+        "proc-macro",
+    ],
     crate_name = "build",
     edition = "2018",
 )
@@ -125,21 +135,23 @@ cargo_build_script(
 rust_library(
     name = "scratch",
     srcs = glob(["vendor/scratch-1.0.2/src/**/*.rs"]),
-    edition = "2018",
+    edition = "2015",
     rustc_env = {"OUT_DIR": ""},
     visibility = ["//visibility:public"],
 )
 
 rust_library(
     name = "syn",
-    srcs = glob(["vendor/syn-1.0.103/src/**/*.rs"]),
+    srcs = glob(["vendor/syn-1.0.105/src/**/*.rs"]),
     crate_features = [
         "clone-impls",
+        "default",
         "derive",
         "full",
         "parsing",
         "printing",
         "proc-macro",
+        "quote",
     ],
     edition = "2018",
     visibility = ["//visibility:public"],
@@ -153,14 +165,16 @@ rust_library(
 
 cargo_build_script(
     name = "syn@build",
-    srcs = ["vendor/syn-1.0.103/build.rs"],
+    srcs = ["vendor/syn-1.0.105/build.rs"],
     crate_features = [
         "clone-impls",
+        "default",
         "derive",
         "full",
         "parsing",
         "printing",
         "proc-macro",
+        "quote",
     ],
     crate_name = "build",
     edition = "2018",
@@ -181,5 +195,8 @@ rust_library(
 rust_library(
     name = "unicode-width",
     srcs = glob(["vendor/unicode-width-0.1.10/src/**/*.rs"]),
-    edition = "2018",
+    crate_features = [
+        "default",
+    ],
+    edition = "2015",
 )
