@@ -139,7 +139,14 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
         #attrs
         #[deny(improper_ctypes, improper_ctypes_definitions)]
         #[allow(clippy::unknown_clippy_lints)]
-        #[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
+        #[allow(
+            non_camel_case_types,
+            non_snake_case,
+            clippy::extra_unused_type_parameters,
+            clippy::ptr_as_ptr,
+            clippy::upper_case_acronyms,
+            clippy::use_self,
+        )]
         #vis #mod_token #ident #expanded
     }
 }
@@ -321,6 +328,7 @@ fn expand_enum(enm: &Enum) -> TokenStream {
         Some(quote_spanned! {span=>
             #doc
             #attrs
+            #[allow(dead_code)]
             pub const #variant_ident: Self = #ident { repr: #discriminant };
         })
     });

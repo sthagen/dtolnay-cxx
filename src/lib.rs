@@ -364,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.88")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.90")]
 #![deny(
     improper_ctypes,
     improper_ctypes_definitions,
@@ -378,6 +378,7 @@
     clippy::declare_interior_mutable_const,
     clippy::doc_markdown,
     clippy::empty_enum,
+    clippy::extra_unused_type_parameters,
     clippy::inherent_to_string,
     clippy::items_after_statements,
     clippy::large_enum_variant,

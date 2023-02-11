@@ -291,11 +291,11 @@ def aliases(
 _NORMAL_DEPENDENCIES = {
     "third-party": {
         _COMMON_CONDITION: {
-            "cc": "@vendor__cc-1.0.78//:cc",
+            "cc": "@vendor__cc-1.0.79//:cc",
             "clap": "@vendor__clap-4.1.4//:clap",
             "codespan-reporting": "@vendor__codespan-reporting-0.11.1//:codespan_reporting",
             "once_cell": "@vendor__once_cell-1.17.0//:once_cell",
-            "proc-macro2": "@vendor__proc-macro2-1.0.50//:proc_macro2",
+            "proc-macro2": "@vendor__proc-macro2-1.0.51//:proc_macro2",
             "quote": "@vendor__quote-1.0.23//:quote",
             "scratch": "@vendor__scratch-1.0.3//:scratch",
             "syn": "@vendor__syn-1.0.107//:syn",
@@ -382,12 +382,12 @@ def crate_repositories():
 
     maybe(
         http_archive,
-        name = "vendor__cc-1.0.78",
-        sha256 = "a20104e2335ce8a659d6dd92a51a767a0c062599c73b343fd152cb401e828c3d",
+        name = "vendor__cc-1.0.79",
+        sha256 = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f",
         type = "tar.gz",
-        urls = ["https://crates.io/api/v1/crates/cc/1.0.78/download"],
-        strip_prefix = "cc-1.0.78",
-        build_file = Label("@cxx.rs//third-party/bazel:BUILD.cc-1.0.78.bazel"),
+        urls = ["https://crates.io/api/v1/crates/cc/1.0.79/download"],
+        strip_prefix = "cc-1.0.79",
+        build_file = Label("@cxx.rs//third-party/bazel:BUILD.cc-1.0.79.bazel"),
     )
 
     maybe(
@@ -442,12 +442,12 @@ def crate_repositories():
 
     maybe(
         http_archive,
-        name = "vendor__proc-macro2-1.0.50",
-        sha256 = "6ef7d57beacfaf2d8aee5937dab7b7f28de3cb8b1828479bb5de2a7106f2bae2",
+        name = "vendor__proc-macro2-1.0.51",
+        sha256 = "5d727cae5b39d21da60fa540906919ad737832fe0b1c165da3a34d6548c849d6",
         type = "tar.gz",
-        urls = ["https://crates.io/api/v1/crates/proc-macro2/1.0.50/download"],
-        strip_prefix = "proc-macro2-1.0.50",
-        build_file = Label("@cxx.rs//third-party/bazel:BUILD.proc-macro2-1.0.50.bazel"),
+        urls = ["https://crates.io/api/v1/crates/proc-macro2/1.0.51/download"],
+        strip_prefix = "proc-macro2-1.0.51",
+        build_file = Label("@cxx.rs//third-party/bazel:BUILD.proc-macro2-1.0.51.bazel"),
     )
 
     maybe(

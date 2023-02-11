@@ -27,7 +27,7 @@ filegroup(
 # Workspace Member Dependencies
 alias(
     name = "cc",
-    actual = "@vendor__cc-1.0.78//:cc",
+    actual = "@vendor__cc-1.0.79//:cc",
     tags = ["manual"],
 )
 
@@ -51,7 +51,7 @@ alias(
 
 alias(
     name = "proc-macro2",
-    actual = "@vendor__proc-macro2-1.0.50//:proc_macro2",
+    actual = "@vendor__proc-macro2-1.0.51//:proc_macro2",
     tags = ["manual"],
 )
 
