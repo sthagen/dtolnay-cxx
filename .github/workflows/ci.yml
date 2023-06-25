@@ -87,9 +87,6 @@ jobs:
         with:
           components: rust-src
       - uses: dtolnay/install-buck2@latest
-      - name: Install lld
-        run: sudo apt-get install lld
-        if: matrix.os == 'ubuntu'
       - run: buck2 run demo
       - run: buck2 build ...
       - run: buck2 test ...
@@ -103,22 +100,24 @@ jobs:
         if: matrix.os == 'ubuntu'
 
   bazel:
-    name: Bazel on Linux
-    runs-on: ubuntu-latest
+    name: Bazel on ${{matrix.os == 'ubuntu' && 'Linux' || matrix.os == 'macos' && 'macOS' || matrix.os == 'windows' && 'Windows' || '???'}}
+    runs-on: ${{matrix.os}}-latest
     if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, macos, windows]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
-      - name: Install Bazel
-        run: |
-          wget -q -O install.sh https://github.com/bazelbuild/bazel/releases/download/6.0.0/bazel-6.0.0-installer-linux-x86_64.sh
-          chmod +x install.sh
-          ./install.sh --user
-          echo $HOME/bin >> $GITHUB_PATH
       - name: Install lld
         run: sudo apt-get install lld
-      - run: bazel run demo --verbose_failures --noshow_progress
-      - run: bazel test ... --verbose_failures --noshow_progress
+        if: matrix.os == 'ubuntu'
+      - run: bazel --version
+      - run: bazel run demo --verbose_failures --noshow_progress ${{matrix.os == 'macos' && '--xcode_version_config=tools/bazel:github_actions_xcodes' || ''}}
+        continue-on-error: ${{matrix.os == 'windows'}}  # https://github.com/bazelbuild/bazel/issues/18592
+      - run: bazel test ... --verbose_failures --noshow_progress ${{matrix.os == 'macos' && '--xcode_version_config=tools/bazel:github_actions_xcodes' || ''}}
+        continue-on-error: ${{matrix.os == 'windows'}}  # https://github.com/bazelbuild/bazel/issues/18592
 
   clippy:
     name: Clippy
