@@ -119,6 +119,18 @@ jobs:
       - run: bazel test ... --verbose_failures --noshow_progress ${{matrix.os == 'macos' && '--xcode_version_config=tools/bazel:github_actions_xcodes' || ''}}
         continue-on-error: ${{matrix.os == 'windows'}}  # https://github.com/bazelbuild/bazel/issues/18592
 
+  minimal:
+    name: Minimal versions
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo generate-lockfile -Z minimal-versions
+      - run: cargo check --locked --workspace
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -129,7 +141,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy, rust-src
-      - run: cargo clippy --workspace --tests -- -Dclippy::all
+      - run: cargo clippy --workspace --tests --exclude demo -- -Dclippy::all -Dclippy::pedantic
+      - run: cargo clippy --manifest-path demo/Cargo.toml -- -Dclippy::all
 
   clang-tidy:
     name: Clang Tidy
