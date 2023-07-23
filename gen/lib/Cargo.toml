@@ -1,6 +1,6 @@
 [package]
 name = "cxx-gen"
-version = "0.7.100"
+version = "0.7.102"
 authors = ["Adrian Taylor <adetaylor@chromium.org>"]
 categories = ["development-tools::ffi"]
 description = "C++ code generator for integrating `cxx` crate into higher level tools."
@@ -22,3 +22,4 @@ doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--generate-link-to-definition"]
