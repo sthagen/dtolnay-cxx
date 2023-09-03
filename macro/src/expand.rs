@@ -1613,6 +1613,7 @@ fn expand_cxx_vector(
     let name = elem.to_string();
     let resolve = types.resolve(elem);
     let prefix = format!("cxxbridge1$std$vector${}$", resolve.name.to_symbol());
+    let link_new = format!("{}new", prefix);
     let link_size = format!("{}size", prefix);
     let link_get_unchecked = format!("{}get_unchecked", prefix);
     let link_push_back = format!("{}push_back", prefix);
@@ -1671,6 +1672,13 @@ fn expand_cxx_vector(
         #unsafe_token impl #impl_generics ::cxx::private::VectorElement for #elem #ty_generics {
             fn __typename(f: &mut ::cxx::core::fmt::Formatter<'_>) -> ::cxx::core::fmt::Result {
                 f.write_str(#name)
+            }
+            fn __vector_new() -> *mut ::cxx::CxxVector<Self> {
+                extern "C" {
+                    #[link_name = #link_new]
+                    fn __vector_new #impl_generics() -> *mut ::cxx::CxxVector<#elem #ty_generics>;
+                }
+                unsafe { __vector_new() }
             }
             fn __vector_size(v: &::cxx::CxxVector<Self>) -> usize {
                 extern "C" {
