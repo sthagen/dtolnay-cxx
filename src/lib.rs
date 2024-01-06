@@ -364,7 +364,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.114")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.115")]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![deny(
     improper_ctypes,
@@ -548,4 +548,4 @@ chars! {
 }
 
 #[repr(transparent)]
-struct void(core::ffi::c_void);
+struct void(#[allow(dead_code)] core::ffi::c_void);
