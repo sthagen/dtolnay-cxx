@@ -18,7 +18,7 @@
 //!
 //! <br>
 //!
-//! *Compiler support: requires rustc 1.63+ and c++11 or newer*<br>
+//! *Compiler support: requires rustc 1.67+ and c++11 or newer*<br>
 //! *[Release notes](https://github.com/dtolnay/cxx/releases)*
 //!
 //! <br>
@@ -400,6 +400,7 @@
     clippy::or_fun_call,
     clippy::ptr_arg,
     clippy::ptr_as_ptr,
+    clippy::ptr_cast_constness,
     clippy::toplevel_ref_arg,
     clippy::transmute_undefined_repr, // clippy bug: https://github.com/rust-lang/rust-clippy/issues/8417
     clippy::uninlined_format_args,
@@ -448,7 +449,6 @@ compile_error! {
 #[macro_use]
 mod macros;
 
-mod c_char;
 mod cxx_vector;
 mod exception;
 mod extern_type;
@@ -503,7 +503,6 @@ pub type Vector<T> = CxxVector<T>;
 // Not public API.
 #[doc(hidden)]
 pub mod private {
-    pub use crate::c_char::c_char;
     pub use crate::cxx_vector::VectorElement;
     pub use crate::extern_type::{verify_extern_kind, verify_extern_type};
     pub use crate::function::FatFunction;
