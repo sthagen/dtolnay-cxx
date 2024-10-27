@@ -86,9 +86,9 @@ rust_library(
         "@rules_rust//rust/platform:x86_64-unknown-none": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    version = "2.0.79",
+    version = "2.0.85",
     deps = [
-        "@vendor__proc-macro2-1.0.87//:proc_macro2",
+        "@vendor__proc-macro2-1.0.89//:proc_macro2",
         "@vendor__quote-1.0.37//:quote",
         "@vendor__unicode-ident-1.0.13//:unicode_ident",
     ],
