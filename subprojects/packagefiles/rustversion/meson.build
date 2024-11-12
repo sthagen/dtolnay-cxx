@@ -1,21 +1,18 @@
 project(
-    'proc-macro2',
+    'rustversion',
     'rust',
-    default_options: ['rust_std=2021'],
+    default_options: ['rust_std=2018'],
     license: 'MIT OR Apache-2.0',
     meson_version: '>= 1.3.0',
-    version: '1.0.89',
+    version: '1.0.18',
 )
+
+rust = import('rust')
 
 build = executable(
     'build_script',
     native: true,
-    rust_args: [
-        '--cfg=feature="default"',
-        '--cfg=feature="proc-macro"',
-        '--cfg=feature="span-locations"',
-    ],
-    sources: files('build.rs'),
+    sources: files('build/build.rs'),
 )
 
 rustc_args = custom_target(
@@ -33,25 +30,19 @@ rustc_args = custom_target(
         '--rustc-args',
         '@OUTPUT@',
     ],
+    env: {'HOST': 'x86_64-unknown-linux-gnu'},
     # Hack: any extension other than .rs causes a failure "ERROR: Rust target
-    # proc_macro2 contains a non-rust source file" below, and forces the use of
+    # rustversion contains a non-rust source file" below, and forces the use of
     # `structured_sources` which would mean listing out every source file in the
     # crate, instead of just the crate root lib.rs.
     output: 'rustc_args.out.rs',
 )
 
-lib = static_library(
-    'proc_macro2',
-    dependencies: [dependency('unicode-ident', version: ['>= 1', '< 2'])],
-    native: true,
-    rust_args: [
-        '--cfg=feature="default"',
-        '--cfg=feature="proc-macro"',
-        '--cfg=feature="span-locations"',
-        '@' + rustc_args.full_path(),
-    ],
+lib = rust.proc_macro(
+    'rustversion',
+    rust_args: ['@' + rustc_args.full_path()],
     sources: [files('src/lib.rs'), rustc_args],
 )
 
 dep = declare_dependency(link_with: lib)
-meson.override_dependency('proc-macro2', dep)
+meson.override_dependency('rustversion', dep)

@@ -4,10 +4,19 @@ project(
     license: 'MIT OR Apache-2.0',
     license_files: ['LICENSE-APACHE', 'LICENSE-MIT'],
     meson_version: '>= 1.3.0',
+    version: '1.0.130',
 )
 
 add_languages('rust', native: true)
 add_languages('rust', 'cpp', native: false)
+
+cpp_compiler = meson.get_compiler('cpp')
+add_project_arguments(
+    cpp_compiler.get_supported_arguments('-Wno-dollar-in-identifier-extension'),
+    language: 'cpp',
+)
+
+add_global_arguments('-Zunstable-options', language: 'rust', native: true)
 
 subdir('tools/meson')
 subdir('third-party')
@@ -27,6 +36,7 @@ cxxbridge_macro = rust.proc_macro(
     dependencies: [
         third_party['proc-macro2'],
         third_party['quote'],
+        third_party['rustversion'],
         third_party['syn'],
     ],
     sources: files('macro/src/lib.rs'),
