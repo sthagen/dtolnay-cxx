@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [nightly, beta, stable, 1.70.0, 1.74.0]
+        rust: [nightly, beta, stable, 1.82.0, 1.70.0, 1.74.0]
         os: [ubuntu]
         include:
           - name: Cargo on macOS
@@ -116,24 +116,6 @@ jobs:
       - name: Check third-party/bazel up to date
         run: git diff --exit-code
         if: matrix.os == 'ubuntu' || matrix.os == 'macos'
-
-  meson:
-    name: Meson
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: mesonbuild/meson
-          path: meson
-      - uses: dtolnay/rust-toolchain@nightly
-      - run: sudo apt-get install lld ninja-build
-      - run: meson/meson.py setup --native-file=tools/meson/native.ini build
-      - run: meson/meson.py compile -C build
-      - run: build/demo/demo
-      - run: meson/meson.py test -C build
 
   minimal:
     name: Minimal versions
