@@ -45,6 +45,10 @@ public:
   String(const char *, std::size_t);
   String(const char16_t *);
   String(const char16_t *, std::size_t);
+#if __cplusplus >= 202002L
+  String(const char8_t *s);
+  String(const char8_t *s, std::size_t len);
+#endif
 
   // Replace invalid Unicode data with the replacement character (U+FFFD).
   static String lossy(const std::string &) noexcept;
@@ -238,7 +242,7 @@ public:
   iterator &operator+=(difference_type) noexcept;
   iterator &operator-=(difference_type) noexcept;
   iterator operator+(difference_type) const noexcept;
-  friend inline iterator operator+(difference_type lhs, iterator rhs) {
+  friend inline iterator operator+(difference_type lhs, iterator rhs) noexcept {
     return rhs + lhs;
   }
   iterator operator-(difference_type) const noexcept;
