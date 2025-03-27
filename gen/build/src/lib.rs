@@ -45,7 +45,7 @@
 //! $ cxxbridge src/main.rs > path/to/mybridge.cc
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.150")]
+#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.151")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
     clippy::cast_sign_loss,
@@ -64,6 +64,7 @@
     clippy::needless_pass_by_value,
     clippy::nonminimal_bool,
     clippy::redundant_else,
+    clippy::ref_as_ptr,
     clippy::ref_option,
     clippy::similar_names,
     clippy::single_match_else,
