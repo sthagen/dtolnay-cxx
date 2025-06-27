@@ -17,7 +17,7 @@ cargo_toml_env_vars(
 )
 
 rust_library(
-    name = "indexmap",
+    name = "syn",
     srcs = glob(
         include = ["**/*.rs"],
         allow_empty = True,
@@ -35,8 +35,13 @@ rust_library(
         ],
     ),
     crate_features = [
+        "clone-impls",
         "default",
-        "std",
+        "derive",
+        "full",
+        "parsing",
+        "printing",
+        "proc-macro",
     ],
     crate_root = "src/lib.rs",
     edition = "2021",
@@ -48,7 +53,7 @@ rust_library(
     ],
     tags = [
         "cargo-bazel",
-        "crate-name=indexmap",
+        "crate-name=syn",
         "manual",
         "noclippy",
         "norustfmt",
@@ -92,9 +97,10 @@ rust_library(
         "@rules_rust//rust/platform:x86_64-unknown-uefi": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    version = "2.9.0",
+    version = "2.0.104",
     deps = [
-        "@vendor__equivalent-1.0.2//:equivalent",
-        "@vendor__hashbrown-0.15.4//:hashbrown",
+        "@vendor__proc-macro2-1.0.95//:proc_macro2",
+        "@vendor__quote-1.0.40//:quote",
+        "@vendor__unicode-ident-1.0.18//:unicode_ident",
     ],
 )
