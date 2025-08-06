@@ -19,7 +19,6 @@
 //!         .std("c++11")
 //!         .compile("cxxbridge-demo");
 //!
-//!     println!("cargo:rerun-if-changed=src/main.rs");
 //!     println!("cargo:rerun-if-changed=src/demo.cc");
 //!     println!("cargo:rerun-if-changed=include/demo.h");
 //! }
@@ -45,7 +44,7 @@
 //! $ cxxbridge src/main.rs > path/to/mybridge.cc
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.161")]
+#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.163")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
     clippy::cast_sign_loss,
@@ -398,6 +397,7 @@ fn generate_bridge(prj: &Project, build: &mut Build, rust_source_file: &Path) ->
         doxygen: CFG.doxygen,
         ..Opt::default()
     };
+    println!("cargo:rerun-if-changed={}", rust_source_file.display());
     let generated = gen::generate_from_path(rust_source_file, &opt);
     let ref rel_path = paths::local_relative_path(rust_source_file);
 

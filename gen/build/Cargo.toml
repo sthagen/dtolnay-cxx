@@ -1,6 +1,6 @@
 [package]
 name = "cxx-build"
-version = "1.0.161"
+version = "1.0.163"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 categories = ["development-tools::build-utils", "development-tools::ffi"]
 description = "C++ code generator for integrating `cxx` crate into a Cargo build."
@@ -15,8 +15,6 @@ rust-version = "1.73"
 
 [features]
 parallel = ["cc/parallel"]
-# incomplete features that are not covered by a compatibility guarantee:
-experimental-async-fn = []
 
 [dependencies]
 cc = "1.0.83"

@@ -11,8 +11,8 @@ use crate::syntax::set::UnorderedSet;
 use crate::syntax::symbol::{self, Symbol};
 use crate::syntax::trivial::{self, TrivialReason};
 use crate::syntax::{
-    derive, mangle, Api, Doc, Enum, EnumRepr, ExternFn, ExternType, Lang, Pair, Signature, Struct,
-    Trait, Type, TypeAlias, Types, Var,
+    derive, mangle, Api, Doc, Enum, ExternFn, ExternType, Lang, Pair, Signature, Struct, Trait,
+    Type, TypeAlias, Types, Var,
 };
 use proc_macro2::Ident;
 
@@ -127,10 +127,10 @@ fn write_data_structures<'a>(out: &mut OutFile<'a>, apis: &'a [Api]) {
             }
             Api::Enum(enm) => {
                 out.next_section();
-                if !out.types.cxx.contains(&enm.name.rust) {
-                    write_enum(out, enm);
-                } else if !enm.variants_from_header {
+                if out.types.cxx.contains(&enm.name.rust) {
                     check_enum(out, enm);
+                } else {
+                    write_enum(out, enm);
                 }
             }
             Api::RustType(ety) => {
@@ -306,8 +306,8 @@ fn write_struct<'a>(out: &mut OutFile<'a>, strct: &'a Struct, methods: &[&Extern
         }
         write_doc(out, "  ", &method.doc);
         write!(out, "  ");
-        let sig = &method.sig;
         let local_name = method.name.cxx.to_string();
+        let sig = &method.sig;
         let indirect_call = false;
         let main = false;
         write_rust_function_shim_decl(out, &local_name, sig, indirect_call, main);
@@ -365,13 +365,8 @@ fn write_struct_decl(out: &mut OutFile, ident: &Pair) {
 }
 
 fn write_enum_decl(out: &mut OutFile, enm: &Enum) {
-    let repr = match &enm.repr {
-        #[cfg(feature = "experimental-enum-variants-from-header")]
-        EnumRepr::Foreign { .. } => return,
-        EnumRepr::Native { atom, .. } => *atom,
-    };
     write!(out, "enum class {} : ", enm.name.cxx);
-    write_atom(out, repr);
+    write_atom(out, enm.repr.atom);
     writeln!(out, ";");
 }
 
@@ -399,8 +394,8 @@ fn write_opaque_type<'a>(out: &mut OutFile<'a>, ety: &'a ExternType, methods: &[
         }
         write_doc(out, "  ", &method.doc);
         write!(out, "  ");
-        let sig = &method.sig;
         let local_name = method.name.cxx.to_string();
+        let sig = &method.sig;
         let indirect_call = false;
         let main = false;
         write_rust_function_shim_decl(out, &local_name, sig, indirect_call, main);
@@ -426,18 +421,13 @@ fn write_opaque_type<'a>(out: &mut OutFile<'a>, ety: &'a ExternType, methods: &[
 }
 
 fn write_enum<'a>(out: &mut OutFile<'a>, enm: &'a Enum) {
-    let repr = match &enm.repr {
-        #[cfg(feature = "experimental-enum-variants-from-header")]
-        EnumRepr::Foreign { .. } => return,
-        EnumRepr::Native { atom, .. } => *atom,
-    };
     out.set_namespace(&enm.name.namespace);
     let guard = format!("CXXBRIDGE1_ENUM_{}", enm.name.to_symbol());
     writeln!(out, "#ifndef {}", guard);
     writeln!(out, "#define {}", guard);
     write_doc(out, "", &enm.doc);
     write!(out, "enum class {} : ", enm.name.cxx);
-    write_atom(out, repr);
+    write_atom(out, enm.repr.atom);
     writeln!(out, " {{");
     for variant in &enm.variants {
         write_doc(out, "  ", &variant.doc);
@@ -448,11 +438,6 @@ fn write_enum<'a>(out: &mut OutFile<'a>, enm: &'a Enum) {
 }
 
 fn check_enum<'a>(out: &mut OutFile<'a>, enm: &'a Enum) {
-    let repr = match &enm.repr {
-        #[cfg(feature = "experimental-enum-variants-from-header")]
-        EnumRepr::Foreign { .. } => return,
-        EnumRepr::Native { atom, .. } => *atom,
-    };
     out.set_namespace(&enm.name.namespace);
     out.include.type_traits = true;
     writeln!(
@@ -461,11 +446,11 @@ fn check_enum<'a>(out: &mut OutFile<'a>, enm: &'a Enum) {
         enm.name.cxx,
     );
     write!(out, "static_assert(sizeof({}) == sizeof(", enm.name.cxx);
-    write_atom(out, repr);
+    write_atom(out, enm.repr.atom);
     writeln!(out, "), \"incorrect size\");");
     for variant in &enm.variants {
         write!(out, "static_assert(static_cast<");
-        write_atom(out, repr);
+        write_atom(out, enm.repr.atom);
         writeln!(
             out,
             ">({}::{}) == {}, \"disagrees with the value in #[cxx::bridge]\");",
@@ -1707,25 +1692,12 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
         UniquePtr::CxxVector(_) => false,
     };
 
-    let conditional_delete = match ty {
-        UniquePtr::Ident(ident) => {
-            !out.types.structs.contains_key(ident) && !out.types.enums.contains_key(ident)
-        }
-        UniquePtr::CxxVector(_) => false,
-    };
-
-    if conditional_delete {
-        out.builtin.is_complete = true;
-        let definition = match ty {
-            UniquePtr::Ident(ty) => &out.types.resolve(ty).name.cxx,
-            UniquePtr::CxxVector(_) => unreachable!(),
-        };
-        writeln!(
-            out,
-            "static_assert(::rust::detail::is_complete<{}>::value, \"definition of {} is required\");",
-            inner, definition,
-        );
-    }
+    out.builtin.is_complete = true;
+    writeln!(
+        out,
+        "static_assert(::rust::detail::is_complete<{}>::value, \"definition of `{}` is required\");",
+        inner, inner,
+    );
     writeln!(
         out,
         "static_assert(sizeof(::std::unique_ptr<{}>) == sizeof(void *), \"\");",
@@ -1797,16 +1769,12 @@ fn write_unique_ptr_common(out: &mut OutFile, ty: UniquePtr) {
         "void cxxbridge1$unique_ptr${}$drop(::std::unique_ptr<{}> *ptr) noexcept {{",
         instance, inner,
     );
-    if conditional_delete {
-        out.builtin.deleter_if = true;
-        writeln!(
-            out,
-            "  ::rust::deleter_if<::rust::detail::is_complete<{}>::value>{{}}(ptr);",
-            inner,
-        );
-    } else {
-        writeln!(out, "  ptr->~unique_ptr();");
-    }
+    out.builtin.deleter_if = true;
+    writeln!(
+        out,
+        "  ::rust::deleter_if<::rust::detail::is_complete<{}>::value>{{}}(ptr);",
+        inner,
+    );
     writeln!(out, "}}");
 }
 
