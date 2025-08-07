@@ -7,7 +7,7 @@ use crate::syntax::qualified::QualifiedName;
 use crate::syntax::report::Errors;
 use crate::syntax::symbol::Symbol;
 use crate::syntax::{
-    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, Impl, Lang, Lifetimes, Pair,
+    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, FnKind, Impl, Lang, Lifetimes, Pair,
     Signature, Struct, Trait, Type, TypeAlias, Types,
 };
 use crate::type_id::Crate;
@@ -456,7 +456,7 @@ fn expand_cxx_type_assert_pinned(ety: &ExternType, types: &Types) -> TokenStream
 
 fn expand_cxx_function_decl(efn: &ExternFn, types: &Types) -> TokenStream {
     let generics = &efn.generics;
-    let receiver = efn.receiver.iter().map(|receiver| {
+    let receiver = efn.receiver().into_iter().map(|receiver| {
         let receiver_type = receiver.ty();
         quote!(_: #receiver_type)
     });
@@ -499,7 +499,7 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     let doc = &efn.doc;
     let attrs = &efn.attrs;
     let decl = expand_cxx_function_decl(efn, types);
-    let receiver = efn.receiver.iter().map(|receiver| {
+    let receiver = efn.receiver().into_iter().map(|receiver| {
         let var = receiver.var;
         if receiver.pinned {
             let colon = receiver.colon_token;
@@ -525,8 +525,8 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     };
     let indirect_return = indirect_return(efn, types);
     let receiver_var = efn
-        .receiver
-        .iter()
+        .receiver()
+        .into_iter()
         .map(|receiver| receiver.var.to_token_stream());
     let arg_vars = efn.args.iter().map(|arg| {
         let var = &arg.name.rust;
@@ -742,7 +742,7 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
         #trampolines
         #dispatch
     });
-    match &efn.receiver {
+    match efn.self_type() {
         None => {
             quote! {
                 #doc
@@ -750,31 +750,33 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
                 #visibility #unsafety #fn_token #ident #generics #arg_list #ret #fn_body
             }
         }
-        Some(receiver) => {
+        Some(self_type) => {
             let elided_generics;
-            let receiver_ident = &receiver.ty.rust;
-            let resolve = types.resolve(&receiver.ty);
-            let receiver_generics = if receiver.ty.generics.lt_token.is_some() {
-                &receiver.ty.generics
-            } else {
-                elided_generics = Lifetimes {
-                    lt_token: resolve.generics.lt_token,
-                    lifetimes: resolve
-                        .generics
-                        .lifetimes
-                        .pairs()
-                        .map(|pair| {
-                            let lifetime = Lifetime::new("'_", pair.value().apostrophe);
-                            let punct = pair.punct().map(|&&comma| comma);
-                            punctuated::Pair::new(lifetime, punct)
-                        })
-                        .collect(),
-                    gt_token: resolve.generics.gt_token,
-                };
-                &elided_generics
+            let resolve = types.resolve(self_type);
+            let self_type_generics = match &efn.kind {
+                FnKind::Method(receiver) if receiver.ty.generics.lt_token.is_some() => {
+                    &receiver.ty.generics
+                }
+                _ => {
+                    elided_generics = Lifetimes {
+                        lt_token: resolve.generics.lt_token,
+                        lifetimes: resolve
+                            .generics
+                            .lifetimes
+                            .pairs()
+                            .map(|pair| {
+                                let lifetime = Lifetime::new("'_", pair.value().apostrophe);
+                                let punct = pair.punct().map(|&&comma| comma);
+                                punctuated::Pair::new(lifetime, punct)
+                            })
+                            .collect(),
+                        gt_token: resolve.generics.gt_token,
+                    };
+                    &elided_generics
+                }
             };
             quote_spanned! {ident.span()=>
-                impl #generics #receiver_ident #receiver_generics {
+                impl #generics #self_type #self_type_generics {
                     #doc
                     #attrs
                     #visibility #unsafety #fn_token #ident #arg_list #ret #fn_body
@@ -945,13 +947,13 @@ fn expand_forbid(impls: TokenStream) -> TokenStream {
 
 fn expand_rust_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     let link_name = mangle::extern_fn(efn, types);
-    let local_name = match &efn.receiver {
+    let local_name = match efn.self_type() {
         None => format_ident!("__{}", efn.name.rust),
-        Some(receiver) => format_ident!("__{}__{}", receiver.ty.rust, efn.name.rust),
+        Some(self_type) => format_ident!("__{}__{}", self_type, efn.name.rust),
     };
-    let prevent_unwind_label = match &efn.receiver {
+    let prevent_unwind_label = match efn.self_type() {
         None => format!("::{}", efn.name.rust),
-        Some(receiver) => format!("::{}::{}", receiver.ty.rust, efn.name.rust),
+        Some(self_type) => format!("::{}::{}", self_type, efn.name.rust),
     };
     let invoke = Some(&efn.name.rust);
     let body_span = efn.semi_token.span;
@@ -981,10 +983,9 @@ fn expand_rust_function_shim_impl(
 ) -> TokenStream {
     let generics = outer_generics.unwrap_or(&sig.generics);
     let receiver_var = sig
-        .receiver
-        .as_ref()
+        .receiver()
         .map(|receiver| quote_spanned!(receiver.var.span=> __self));
-    let receiver = sig.receiver.as_ref().map(|receiver| {
+    let receiver = sig.receiver().map(|receiver| {
         let colon = receiver.colon_token;
         let receiver_type = receiver.ty();
         quote!(#receiver_var #colon #receiver_type)
@@ -1194,10 +1195,9 @@ fn expand_rust_function_shim_super(
     let generics = &sig.generics;
 
     let receiver_var = sig
-        .receiver
-        .as_ref()
+        .receiver()
         .map(|receiver| Ident::new("__self", receiver.var.span));
-    let receiver = sig.receiver.iter().map(|receiver| {
+    let receiver = sig.receiver().into_iter().map(|receiver| {
         let receiver_type = receiver.ty();
         quote!(#receiver_var: #receiver_type)
     });
@@ -1227,12 +1227,9 @@ fn expand_rust_function_shim_super(
     let vars = receiver_var.iter().chain(arg_vars);
 
     let span = invoke.span();
-    let call = match &sig.receiver {
+    let call = match sig.self_type() {
         None => quote_spanned!(span=> super::#invoke),
-        Some(receiver) => {
-            let receiver_type = &receiver.ty.rust;
-            quote_spanned!(span=> #receiver_type::#invoke)
-        }
+        Some(self_type) => quote_spanned!(span=> #self_type::#invoke),
     };
 
     let mut body = quote_spanned!(span=> #call(#(#vars,)*));

@@ -35,6 +35,7 @@ pub(crate) struct Parser<'a> {
     pub namespace: Option<&'a mut Namespace>,
     pub cxx_name: Option<&'a mut Option<ForeignName>>,
     pub rust_name: Option<&'a mut Option<Ident>>,
+    pub self_type: Option<&'a mut Option<Ident>>,
     pub ignore_unrecognized: bool,
 
     // Suppress clippy needless_update lint ("struct update has no effect, all
@@ -116,10 +117,23 @@ pub(crate) fn parse(cx: &mut Errors, attrs: Vec<Attribute>, mut parser: Parser) 
                 }
             }
         } else if attr_path.is_ident("rust_name") {
-            match parse_rust_name_attribute(&attr.meta) {
+            match parse_rust_ident_attribute(&attr.meta) {
                 Ok(attr) => {
                     if let Some(rust_name) = &mut parser.rust_name {
                         **rust_name = Some(attr);
+                        continue;
+                    }
+                }
+                Err(err) => {
+                    cx.push(err);
+                    break;
+                }
+            }
+        } else if attr_path.is_ident("Self") {
+            match parse_rust_ident_attribute(&attr.meta) {
+                Ok(attr) => {
+                    if let Some(self_type) = &mut parser.self_type {
+                        **self_type = Some(attr);
                         continue;
                     }
                 }
@@ -252,7 +266,7 @@ fn parse_cxx_name_attribute(meta: &Meta) -> Result<ForeignName> {
     Err(Error::new_spanned(meta, "unsupported cxx_name attribute"))
 }
 
-fn parse_rust_name_attribute(meta: &Meta) -> Result<Ident> {
+fn parse_rust_ident_attribute(meta: &Meta) -> Result<Ident> {
     if let Meta::NameValue(meta) = meta {
         match &meta.value {
             Expr::Lit(expr) => {
@@ -268,7 +282,13 @@ fn parse_rust_name_attribute(meta: &Meta) -> Result<Ident> {
             _ => {}
         }
     }
-    Err(Error::new_spanned(meta, "unsupported rust_name attribute"))
+    Err(Error::new_spanned(
+        meta,
+        format!(
+            "unsupported `{}` attribute",
+            meta.path().get_ident().unwrap(),
+        ),
+    ))
 }
 
 #[derive(Clone)]

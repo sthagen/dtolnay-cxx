@@ -11,8 +11,8 @@ use crate::syntax::set::UnorderedSet;
 use crate::syntax::symbol::{self, Symbol};
 use crate::syntax::trivial::{self, TrivialReason};
 use crate::syntax::{
-    derive, mangle, Api, Doc, Enum, ExternFn, ExternType, Lang, Pair, Signature, Struct, Trait,
-    Type, TypeAlias, Types, Var,
+    derive, mangle, Api, Doc, Enum, ExternFn, ExternType, FnKind, Lang, Pair, Signature, Struct,
+    Trait, Type, TypeAlias, Types, Var,
 };
 use proc_macro2::Ident;
 
@@ -96,9 +96,9 @@ fn write_data_structures<'a>(out: &mut OutFile<'a>, apis: &'a [Api]) {
     let mut methods_for_type = Map::new();
     for api in apis {
         if let Api::CxxFunction(efn) | Api::RustFunction(efn) = api {
-            if let Some(receiver) = &efn.receiver {
+            if let Some(self_type) = efn.self_type() {
                 methods_for_type
-                    .entry(&receiver.ty.rust)
+                    .entry(self_type)
                     .or_insert_with(Vec::new)
                     .push(efn);
             }
@@ -308,9 +308,10 @@ fn write_struct<'a>(out: &mut OutFile<'a>, strct: &'a Struct, methods: &[&Extern
         write!(out, "  ");
         let local_name = method.name.cxx.to_string();
         let sig = &method.sig;
+        let in_class = true;
         let indirect_call = false;
         let main = false;
-        write_rust_function_shim_decl(out, &local_name, sig, indirect_call, main);
+        write_rust_function_shim_decl(out, &local_name, sig, in_class, indirect_call, main);
         writeln!(out, ";");
         if !method.doc.is_empty() {
             out.next_section();
@@ -396,9 +397,10 @@ fn write_opaque_type<'a>(out: &mut OutFile<'a>, ety: &'a ExternType, methods: &[
         write!(out, "  ");
         let local_name = method.name.cxx.to_string();
         let sig = &method.sig;
+        let in_class = true;
         let indirect_call = false;
         let main = false;
-        write_rust_function_shim_decl(out, &local_name, sig, indirect_call, main);
+        write_rust_function_shim_decl(out, &local_name, sig, in_class, indirect_call, main);
         writeln!(out, ";");
         if !method.doc.is_empty() {
             out.next_section();
@@ -734,7 +736,7 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
     }
     let mangled = mangle::extern_fn(efn, out.types);
     write!(out, "{}(", mangled);
-    if let Some(receiver) = &efn.receiver {
+    if let FnKind::Method(receiver) = &efn.kind {
         write!(
             out,
             "{}",
@@ -746,7 +748,7 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
         write!(out, " &self");
     }
     for (i, arg) in efn.args.iter().enumerate() {
-        if i > 0 || efn.receiver.is_some() {
+        if i > 0 || matches!(efn.kind, FnKind::Method(_)) {
             write!(out, ", ");
         }
         if arg.ty == RustString {
@@ -761,7 +763,7 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
     }
     let indirect_return = indirect_return(efn, out.types);
     if indirect_return {
-        if !efn.args.is_empty() || efn.receiver.is_some() {
+        if !efn.args.is_empty() || matches!(efn.kind, FnKind::Method(_)) {
             write!(out, ", ");
         }
         write_indirect_return_type_space(out, efn.ret.as_ref().unwrap());
@@ -776,7 +778,7 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
     writeln!(out, " {{");
     write!(out, "  ");
     write_return_type(out, &efn.ret);
-    match &efn.receiver {
+    match efn.receiver() {
         None => write!(out, "(*{}$)(", efn.name.rust),
         Some(receiver) => write!(
             out,
@@ -792,18 +794,18 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
         write_type(out, &arg.ty);
     }
     write!(out, ")");
-    if let Some(receiver) = &efn.receiver {
+    if let Some(receiver) = efn.receiver() {
         if !receiver.mutable {
             write!(out, " const");
         }
     }
     write!(out, " = ");
-    match &efn.receiver {
+    match efn.self_type() {
         None => write!(out, "{}", efn.name.to_fully_qualified()),
-        Some(receiver) => write!(
+        Some(self_type) => write!(
             out,
             "&{}::{}",
-            out.types.resolve(&receiver.ty).name.to_fully_qualified(),
+            out.types.resolve(self_type).name.to_fully_qualified(),
             efn.name.cxx,
         ),
     }
@@ -839,7 +841,7 @@ fn write_cxx_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
         }
         _ => {}
     }
-    match &efn.receiver {
+    match efn.receiver() {
         None => write!(out, "{}$(", efn.name.rust),
         Some(_) => write!(out, "(self.*{}$)(", efn.name.rust),
     }
@@ -942,7 +944,7 @@ fn write_rust_function_decl_impl(
     }
     write!(out, "{}(", link_name);
     let mut needs_comma = false;
-    if let Some(receiver) = &sig.receiver {
+    if let FnKind::Method(receiver) = &sig.kind {
         write!(
             out,
             "{}",
@@ -989,11 +991,11 @@ fn write_rust_function_decl_impl(
 
 fn write_rust_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
     out.set_namespace(&efn.name.namespace);
-    let local_name = match &efn.receiver {
+    let local_name = match efn.self_type() {
         None => efn.name.cxx.to_string(),
-        Some(receiver) => format!(
+        Some(self_type) => format!(
             "{}::{}",
-            out.types.resolve(&receiver.ty).name.cxx,
+            out.types.resolve(self_type).name.cxx,
             efn.name.cxx,
         ),
     };
@@ -1003,7 +1005,7 @@ fn write_rust_function_shim<'a>(out: &mut OutFile<'a>, efn: &'a ExternFn) {
     let main = efn.name.cxx == *"main"
         && efn.name.namespace == Namespace::ROOT
         && efn.sig.asyncness.is_none()
-        && efn.sig.receiver.is_none()
+        && matches!(efn.kind, FnKind::Free)
         && efn.sig.args.is_empty()
         && efn.sig.ret.is_none()
         && !efn.sig.throws;
@@ -1014,10 +1016,14 @@ fn write_rust_function_shim_decl(
     out: &mut OutFile,
     local_name: &str,
     sig: &Signature,
+    in_class: bool,
     indirect_call: bool,
     main: bool,
 ) {
     begin_function_definition(out);
+    if matches!(sig.kind, FnKind::Assoc(_)) && in_class {
+        write!(out, "static ");
+    }
     if main {
         write!(out, "int ");
     } else {
@@ -1038,7 +1044,7 @@ fn write_rust_function_shim_decl(
         write!(out, "void *extern$");
     }
     write!(out, ")");
-    if let Some(receiver) = &sig.receiver {
+    if let FnKind::Method(receiver) = &sig.kind {
         if !receiver.mutable {
             write!(out, " const");
         }
@@ -1057,15 +1063,19 @@ fn write_rust_function_shim_impl(
     indirect_call: bool,
     main: bool,
 ) {
-    if out.header && sig.receiver.is_some() {
+    if match sig.kind {
+        FnKind::Free => false,
+        FnKind::Method(_) | FnKind::Assoc(_) => out.header,
+    } {
         // We've already defined this inside the struct.
         return;
     }
-    if sig.receiver.is_none() {
+    if matches!(sig.kind, FnKind::Free) {
         // Member functions already documented at their declaration.
         write_doc(out, "", doc);
     }
-    write_rust_function_shim_decl(out, local_name, sig, indirect_call, main);
+    let in_class = false;
+    write_rust_function_shim_decl(out, local_name, sig, in_class, indirect_call, main);
     if out.header {
         writeln!(out, ";");
         return;
@@ -1128,7 +1138,7 @@ fn write_rust_function_shim_impl(
     }
     write!(out, "{}(", invoke);
     let mut needs_comma = false;
-    if sig.receiver.is_some() {
+    if matches!(sig.kind, FnKind::Method(_)) {
         write!(out, "*this");
         needs_comma = true;
     }
