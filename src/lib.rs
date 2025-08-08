@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.164")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.165")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(
     improper_ctypes,
@@ -388,6 +388,7 @@
     clippy::must_use_candidate,
     clippy::needless_doctest_main,
     clippy::needless_lifetimes,
+    clippy::needless_pass_by_value,
     clippy::new_without_default,
     clippy::ptr_as_ptr,
     clippy::ptr_cast_constness,
