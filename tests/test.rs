@@ -307,6 +307,11 @@ fn test_enum_representations() {
 }
 
 #[test]
+fn test_struct_repr_align() {
+    assert_eq!(4, std::mem::align_of::<ffi::OveralignedStruct>());
+}
+
+#[test]
 fn test_debug() {
     assert_eq!("Shared { z: 1 }", format!("{:?}", ffi::Shared { z: 1 }));
     assert_eq!("BVal", format!("{:?}", ffi::Enum::BVal));

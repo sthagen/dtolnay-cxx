@@ -178,11 +178,13 @@ fn expand_struct(strct: &Struct) -> TokenStream {
         }
     };
 
+    let align = strct.align.as_ref().map(|align| quote!(, align(#align)));
+
     quote! {
         #doc
         #derives
         #attrs
-        #[repr(C)]
+        #[repr(C #align)]
         #struct_def
 
         #[automatically_derived]

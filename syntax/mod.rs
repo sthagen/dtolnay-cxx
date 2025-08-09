@@ -22,6 +22,7 @@ mod pod;
 pub(crate) mod primitive;
 pub(crate) mod qualified;
 pub(crate) mod report;
+pub(crate) mod repr;
 pub(crate) mod resolve;
 pub(crate) mod set;
 mod signature;
@@ -108,6 +109,7 @@ pub(crate) struct Struct {
     pub cfg: CfgExpr,
     pub doc: Doc,
     pub derives: Vec<Derive>,
+    pub align: Option<LitInt>,
     #[allow(dead_code)] // only used by cxxbridge-macro, not cxx-build
     pub attrs: OtherAttrs,
     #[allow(dead_code)] // only used by cxxbridge-macro, not cxx-build

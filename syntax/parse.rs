@@ -3,6 +3,7 @@ use crate::syntax::cfg::CfgExpr;
 use crate::syntax::discriminant::DiscriminantSet;
 use crate::syntax::file::{Item, ItemForeignMod};
 use crate::syntax::report::Errors;
+use crate::syntax::repr::Repr;
 use crate::syntax::Atom::*;
 use crate::syntax::{
     attrs, error, Api, Array, Derive, Doc, Enum, EnumRepr, ExternFn, ExternType, FnKind,
@@ -59,6 +60,7 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
     let mut cfg = CfgExpr::Unconditional;
     let mut doc = Doc::new();
     let mut derives = Vec::new();
+    let mut repr = None;
     let mut namespace = namespace.clone();
     let mut cxx_name = None;
     let mut rust_name = None;
@@ -69,12 +71,22 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
             cfg: Some(&mut cfg),
             doc: Some(&mut doc),
             derives: Some(&mut derives),
+            repr: Some(&mut repr),
             namespace: Some(&mut namespace),
             cxx_name: Some(&mut cxx_name),
             rust_name: Some(&mut rust_name),
             ..Default::default()
         },
     );
+
+    let align = match repr {
+        Some(Repr::Align(align)) => Some(align),
+        Some(Repr::Atom(_atom, span)) => {
+            cx.push(Error::new(span, "unsupported alignment on a struct"));
+            None
+        }
+        None => None,
+    };
 
     let named_fields = match item.fields {
         Fields::Named(fields) => fields,
@@ -177,6 +189,7 @@ fn parse_struct(cx: &mut Errors, mut item: ItemStruct, namespace: &Namespace) ->
         cfg,
         doc,
         derives,
+        align,
         attrs,
         visibility,
         struct_token,
@@ -220,6 +233,15 @@ fn parse_enum(cx: &mut Errors, item: ItemEnum, namespace: &Namespace) -> Api {
     } else if let Some(where_clause) = &item.generics.where_clause {
         cx.error(where_clause, "enum with where-clause is not supported");
     }
+
+    let repr = match repr {
+        Some(Repr::Atom(atom, _span)) => Some(atom),
+        Some(Repr::Align(align)) => {
+            cx.error(align, "C++ does not support custom alignment on an enum");
+            None
+        }
+        None => None,
+    };
 
     let mut variants = Vec::new();
     let mut discriminants = DiscriminantSet::new(repr);
