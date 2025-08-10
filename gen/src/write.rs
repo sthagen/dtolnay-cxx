@@ -1860,6 +1860,15 @@ fn write_shared_ptr(out: &mut OutFile, key: &NamedImplKey) {
     begin_function_definition(out);
     writeln!(
         out,
+        "void cxxbridge1$shared_ptr${}$raw(::std::shared_ptr<{}> *ptr, {} *raw) noexcept {{",
+        instance, inner, inner,
+    );
+    writeln!(out, "  ::new (ptr) ::std::shared_ptr<{}>(raw);", inner);
+    writeln!(out, "}}");
+
+    begin_function_definition(out);
+    writeln!(
+        out,
         "void cxxbridge1$shared_ptr${}$clone(::std::shared_ptr<{}> const &self, ::std::shared_ptr<{}> *ptr) noexcept {{",
         instance, inner, inner,
     );
@@ -1984,10 +1993,28 @@ fn write_cxx_vector(out: &mut OutFile, key: &NamedImplKey) {
     begin_function_definition(out);
     writeln!(
         out,
+        "::std::size_t cxxbridge1$std$vector${}$capacity(::std::vector<{}> const &s) noexcept {{",
+        instance, inner,
+    );
+    writeln!(out, "  return s.capacity();");
+    writeln!(out, "}}");
+
+    begin_function_definition(out);
+    writeln!(
+        out,
         "{} *cxxbridge1$std$vector${}$get_unchecked(::std::vector<{}> *s, ::std::size_t pos) noexcept {{",
         inner, instance, inner,
     );
     writeln!(out, "  return &(*s)[pos];");
+    writeln!(out, "}}");
+
+    begin_function_definition(out);
+    writeln!(
+        out,
+        "void cxxbridge1$std$vector${}$reserve(::std::vector<{}> *s, ::std::size_t new_cap) noexcept {{",
+        instance, inner,
+    );
+    writeln!(out, "  s->reserve(new_cap);");
     writeln!(out, "}}");
 
     if out.types.is_maybe_trivial(element) {

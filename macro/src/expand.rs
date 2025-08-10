@@ -1570,6 +1570,7 @@ fn expand_shared_ptr(
     let prefix = format!("cxxbridge1$shared_ptr${}$", resolve.name.to_symbol());
     let link_null = format!("{}null", prefix);
     let link_uninit = format!("{}uninit", prefix);
+    let link_raw = format!("{}raw", prefix);
     let link_clone = format!("{}clone", prefix);
     let link_get = format!("{}get", prefix);
     let link_drop = format!("{}drop", prefix);
@@ -1613,6 +1614,15 @@ fn expand_shared_ptr(
                 }
             }
             #new_method
+            unsafe fn __raw(new: *mut ::cxx::core::ffi::c_void, raw: *mut Self) {
+                #UnsafeExtern extern "C" {
+                    #[link_name = #link_raw]
+                    fn __raw(new: *const ::cxx::core::ffi::c_void, raw: *mut ::cxx::core::ffi::c_void);
+                }
+                unsafe {
+                    __raw(new, raw as *mut ::cxx::core::ffi::c_void);
+                }
+            }
             unsafe fn __clone(this: *const ::cxx::core::ffi::c_void, new: *mut ::cxx::core::ffi::c_void) {
                 #UnsafeExtern extern "C" {
                     #[link_name = #link_clone]
@@ -1725,7 +1735,9 @@ fn expand_cxx_vector(
     let prefix = format!("cxxbridge1$std$vector${}$", resolve.name.to_symbol());
     let link_new = format!("{}new", prefix);
     let link_size = format!("{}size", prefix);
+    let link_capacity = format!("{}capacity", prefix);
     let link_get_unchecked = format!("{}get_unchecked", prefix);
+    let link_reserve = format!("{}reserve", prefix);
     let link_push_back = format!("{}push_back", prefix);
     let link_pop_back = format!("{}pop_back", prefix);
     let unique_ptr_prefix = format!(
@@ -1819,6 +1831,13 @@ fn expand_cxx_vector(
                 }
                 unsafe { __vector_size(v) }
             }
+            fn __vector_capacity(v: &::cxx::CxxVector<Self>) -> usize {
+                #UnsafeExtern extern "C" {
+                    #[link_name = #link_capacity]
+                    fn __vector_capacity #impl_generics(_: &::cxx::CxxVector<#elem #ty_generics>) -> usize;
+                }
+                unsafe { __vector_capacity(v) }
+            }
             unsafe fn __get_unchecked(v: *mut ::cxx::CxxVector<Self>, pos: usize) -> *mut Self {
                 #UnsafeExtern extern "C" {
                     #[link_name = #link_get_unchecked]
@@ -1828,6 +1847,16 @@ fn expand_cxx_vector(
                     ) -> *mut ::cxx::core::ffi::c_void;
                 }
                 unsafe { __get_unchecked(v, pos) as *mut Self }
+            }
+            unsafe fn __reserve(v: ::cxx::core::pin::Pin<&mut ::cxx::CxxVector<Self>>, new_cap: usize) {
+                #UnsafeExtern extern "C" {
+                    #[link_name = #link_reserve]
+                    fn __reserve #impl_generics(
+                        v: ::cxx::core::pin::Pin<&mut ::cxx::CxxVector<#elem #ty_generics>>,
+                        new_cap: usize,
+                    );
+                }
+                unsafe { __reserve(v, new_cap) }
             }
             #by_value_methods
             fn __unique_ptr_null() -> ::cxx::core::mem::MaybeUninit<*mut ::cxx::core::ffi::c_void> {
