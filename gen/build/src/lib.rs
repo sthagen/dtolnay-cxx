@@ -44,7 +44,7 @@
 //! $ cxxbridge src/main.rs > path/to/mybridge.cc
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.170")]
+#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.173")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
     clippy::cast_sign_loss,
@@ -58,6 +58,7 @@
     clippy::match_bool,
     clippy::match_like_matches_macro,
     clippy::match_same_arms,
+    clippy::needless_continue,
     clippy::needless_doctest_main,
     clippy::needless_lifetimes,
     clippy::needless_pass_by_value,

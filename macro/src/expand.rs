@@ -3,6 +3,7 @@ use crate::syntax::attrs::{self, OtherAttrs};
 use crate::syntax::cfg::CfgExpr;
 use crate::syntax::file::Module;
 use crate::syntax::instantiate::{ImplKey, NamedImplKey};
+use crate::syntax::namespace::Namespace;
 use crate::syntax::qualified::QualifiedName;
 use crate::syntax::report::Errors;
 use crate::syntax::symbol::Symbol;
@@ -14,8 +15,9 @@ use crate::type_id::Crate;
 use crate::{derive, generics};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
+use std::fmt::{self, Display};
 use std::mem;
-use syn::{parse_quote, punctuated, Generics, Lifetime, Result, Token};
+use syn::{parse_quote, punctuated, Generics, Lifetime, Result, Token, Visibility};
 
 pub(crate) fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
@@ -69,7 +71,9 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
             Api::Enum(enm) => expanded.extend(expand_enum(enm)),
             Api::CxxType(ety) => {
                 let ident = &ety.name.rust;
-                if !types.structs.contains_key(ident) && !types.enums.contains_key(ident) {
+                if types.structs.contains_key(ident) {
+                    hidden.extend(expand_extern_shared_struct(ety, &ffi));
+                } else if !types.enums.contains_key(ident) {
                     expanded.extend(expand_cxx_type(ety));
                     hidden.extend(expand_cxx_type_assert_pinned(ety, types));
                 }
@@ -453,6 +457,74 @@ fn expand_cxx_type_assert_pinned(ety: &ExternType, types: &Types) -> TokenStream
             // then `__AmbiguousIfImpl<__Invalid>` also exists.
             <#ident #lifetimes as __AmbiguousIfImpl<#infer>>::infer
         };
+    }
+}
+
+fn expand_extern_shared_struct(ety: &ExternType, ffi: &Module) -> TokenStream {
+    let module = &ffi.ident;
+    let name = &ety.name.rust;
+    let namespaced_name = display_namespaced(&ety.name);
+
+    let visibility = match &ffi.vis {
+        Visibility::Public(_) => "pub ".to_owned(),
+        Visibility::Restricted(vis) => {
+            format!(
+                "pub(in {}) ",
+                vis.path
+                    .segments
+                    .iter()
+                    .map(|segment| segment.ident.to_string())
+                    .collect::<Vec<_>>()
+                    .join("::"),
+            )
+        }
+        Visibility::Inherited => String::new(),
+    };
+
+    let namespace_attr = if ety.name.namespace == Namespace::ROOT {
+        String::new()
+    } else {
+        format!(
+            "#[namespace = \"{}\"]\n        ",
+            ety.name
+                .namespace
+                .iter()
+                .map(Ident::to_string)
+                .collect::<Vec<_>>()
+                .join("::"),
+        )
+    };
+
+    let message = format!(
+        "\
+        \nShared struct redeclared as an unsafe extern C++ type is deprecated.\
+        \nIf this is intended to be a shared struct, remove this `type {name}`.\
+        \nIf this is intended to be an extern type, change it to:\
+        \n\
+        \n    use cxx::ExternType;\
+        \n    \
+        \n    #[repr(C)]\
+        \n    {visibility}struct {name} {{\
+        \n        ...\
+        \n    }}\
+        \n    \
+        \n    unsafe impl ExternType for {name} {{\
+        \n        type Id = cxx::type_id!(\"{namespaced_name}\");\
+        \n        type Kind = cxx::kind::Trivial;\
+        \n    }}\
+        \n    \
+        \n    {visibility}mod {module} {{\
+        \n        {namespace_attr}extern \"C++\" {{\
+        \n            type {name} = crate::{name};\
+        \n        }}\
+        \n        ...\
+        \n    }}",
+    );
+
+    quote! {
+        #[deprecated = #message]
+        struct #name {}
+        let _ = #name {};
     }
 }
 
@@ -1597,6 +1669,7 @@ fn expand_shared_ptr(
     let begin_span = explicit_impl.map_or(key.begin_span, |explicit| explicit.impl_token.span);
     let end_span = explicit_impl.map_or(key.end_span, |explicit| explicit.brace_token.span.join());
     let unsafe_token = format_ident!("unsafe", span = begin_span);
+    let not_destructible_err = format!("{} is not destructible", display_namespaced(resolve.name));
 
     quote_spanned! {end_span=>
         #[automatically_derived]
@@ -1614,13 +1687,14 @@ fn expand_shared_ptr(
                 }
             }
             #new_method
+            #[track_caller]
             unsafe fn __raw(new: *mut ::cxx::core::ffi::c_void, raw: *mut Self) {
                 #UnsafeExtern extern "C" {
                     #[link_name = #link_raw]
-                    fn __raw(new: *const ::cxx::core::ffi::c_void, raw: *mut ::cxx::core::ffi::c_void);
+                    fn __raw(new: *const ::cxx::core::ffi::c_void, raw: *mut ::cxx::core::ffi::c_void) -> ::cxx::core::primitive::bool;
                 }
-                unsafe {
-                    __raw(new, raw as *mut ::cxx::core::ffi::c_void);
+                if !unsafe { __raw(new, raw as *mut ::cxx::core::ffi::c_void) } {
+                    ::cxx::core::panic!(#not_destructible_err);
                 }
             }
             unsafe fn __clone(this: *const ::cxx::core::ffi::c_void, new: *mut ::cxx::core::ffi::c_void) {
@@ -2000,6 +2074,21 @@ fn expand_extern_return_type(ret: &Option<Type>, types: &Types, proper: bool) ->
     };
     let ty = expand_extern_type(ret, types, proper);
     quote!(-> #ty)
+}
+
+fn display_namespaced(name: &Pair) -> impl Display + '_ {
+    struct Namespaced<'a>(&'a Pair);
+
+    impl<'a> Display for Namespaced<'a> {
+        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            for segment in &self.0.namespace {
+                write!(formatter, "{segment}::")?;
+            }
+            write!(formatter, "{}", self.0.cxx)
+        }
+    }
+
+    Namespaced(name)
 }
 
 // #UnsafeExtern extern "C" {...}

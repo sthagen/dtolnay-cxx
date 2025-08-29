@@ -25,6 +25,14 @@ use std::os::raw::c_char;
 
 #[cxx::bridge(namespace = "tests")]
 pub mod ffi {
+    extern "C++" {
+        include!("tests/ffi/tests.h");
+
+        type Undefined;
+        type Private;
+        type Array;
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
     struct Shared {
         z: usize,
@@ -82,7 +90,7 @@ pub mod ffi {
         e: COwnedEnum,
     }
 
-    pub struct Array {
+    pub struct WithArray {
         a: [i32; 4],
         b: Buffer,
     }
@@ -98,8 +106,6 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("tests/ffi/tests.h");
-
         type C;
 
         fn c_return_primitive() -> usize;
@@ -211,7 +217,7 @@ pub mod ffi {
         fn c_method_mut_on_shared(self: &mut Shared) -> &mut usize;
         #[Self = "Shared"]
         fn c_static_method_on_shared() -> usize;
-        fn c_set_array(self: &mut Array, value: i32);
+        fn c_set_array(self: &mut WithArray, value: i32);
 
         fn c_get_use_count(weak: &WeakPtr<C>) -> usize;
 
@@ -323,7 +329,7 @@ pub mod ffi {
         fn get(self: &R) -> usize;
         fn set(self: &mut R, n: usize) -> usize;
         fn r_method_on_shared(self: &Shared) -> String;
-        fn r_get_array_sum(self: &Array) -> i32;
+        fn r_get_array_sum(self: &WithArray) -> i32;
         // Ensure that a Rust method can be implemented on an opaque C++ type.
         fn r_method_on_c_get_mut(self: Pin<&mut C>) -> &mut usize;
 
@@ -360,6 +366,9 @@ pub mod ffi {
 
     impl Box<Shared> {}
     impl CxxVector<SharedString> {}
+    impl SharedPtr<Undefined> {}
+    impl SharedPtr<Private> {}
+    impl UniquePtr<Array> {}
 }
 
 mod other {
@@ -444,7 +453,7 @@ impl ffi::Shared {
     }
 }
 
-impl ffi::Array {
+impl ffi::WithArray {
     pub fn r_get_array_sum(&self) -> i32 {
         self.a.iter().sum()
     }
