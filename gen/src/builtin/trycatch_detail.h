@@ -2,6 +2,9 @@
 #include "./ptr_len.h"
 #include <string>
 
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
+
 namespace rust {
 inline namespace cxxbridge1 {
 namespace detail {

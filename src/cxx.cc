@@ -22,6 +22,13 @@
 #define RUST_CXX_NO_EXCEPTIONS
 #endif
 
+#ifdef __GNUC__
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
+#endif
+
 extern "C" {
 void cxxbridge1$cxx_string$init(std::string *s, const std::uint8_t *ptr,
                                 std::size_t len) noexcept {
@@ -385,7 +392,8 @@ bool Str::operator<=(const Str &rhs) const noexcept {
   const_iterator liter = this->begin(), lend = this->end(), riter = rhs.begin(),
                  rend = rhs.end();
   while (liter != lend && riter != rend && *liter == *riter) {
-    ++liter, ++riter;
+    ++liter;
+    ++riter;
   }
   if (liter == lend) {
     return true; // equal or *this is a prefix of rhs
