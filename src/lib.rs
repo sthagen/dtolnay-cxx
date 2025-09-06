@@ -18,7 +18,7 @@
 //!
 //! <br>
 //!
-//! *Compiler support: requires rustc 1.73+ and c++11 or newer*<br>
+//! *Compiler support: requires rustc 1.81+ and c++11 or newer*<br>
 //! *[Release notes](https://github.com/dtolnay/cxx/releases)*
 //!
 //! <br>
@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.175")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.177")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(
     improper_ctypes,
@@ -502,7 +502,9 @@ pub mod private {
     pub use crate::rust_str::RustStr;
     #[cfg(feature = "alloc")]
     pub use crate::rust_string::RustString;
-    pub use crate::rust_type::{ImplBox, ImplVec, RustType};
+    pub use crate::rust_type::{
+        require_box, require_unpin, require_vec, with, ImplBox, ImplVec, RustType, Without,
+    };
     #[cfg(feature = "alloc")]
     pub use crate::rust_vec::RustVec;
     pub use crate::string::StackString;
