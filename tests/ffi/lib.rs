@@ -43,9 +43,10 @@ pub mod ffi {
         msg: String,
     }
 
-    #[derive(Debug, Hash, PartialOrd, Ord)]
+    #[derive(Debug, Hash, PartialOrd, Ord, Default)]
     enum Enum {
         AVal,
+        #[default]
         BVal = 2020,
         #[cxx_name = "CVal"]
         LastVal,
@@ -349,6 +350,10 @@ pub mod ffi {
 
         #[Self = "R"]
         fn r_static_method() -> usize;
+    }
+
+    unsafe extern "C++" {
+        fn c_member_function_on_rust_type(self: &R);
     }
 
     struct Dag0 {

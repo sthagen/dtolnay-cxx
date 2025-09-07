@@ -363,7 +363,7 @@
 //! </table>
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/cxx/1.0.177")]
+#![doc(html_root_url = "https://docs.rs/cxx/1.0.179")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(
     improper_ctypes,
@@ -376,7 +376,7 @@
     clippy::std_instead_of_alloc,
     clippy::std_instead_of_core
 )]
-#![allow(non_camel_case_types)]
+#![expect(non_camel_case_types)]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::doc_markdown,
@@ -534,4 +534,4 @@ chars! {
 }
 
 #[repr(transparent)]
-struct void(#[allow(dead_code)] core::ffi::c_void);
+struct void(core::ffi::c_void);

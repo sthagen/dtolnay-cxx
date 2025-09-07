@@ -1,4 +1,5 @@
 use crate::syntax::atom::Atom::{self, *};
+use crate::syntax::message::Message;
 use crate::syntax::report::Errors;
 use crate::syntax::visit::{self, Visit};
 use crate::syntax::{
@@ -19,14 +20,14 @@ pub(crate) struct Check<'a> {
 
 pub(crate) enum Generator {
     // cxx-build crate, cxxbridge cli, cxx-gen.
-    #[allow(dead_code)]
+    #[cfg_attr(proc_macro, expect(dead_code))]
     Build,
     // cxxbridge-macro. This is relevant in that the macro output is going to
     // get fed straight to rustc, so for errors that rustc already contains
     // logic to catch (probably with a better diagnostic than what the proc
     // macro API is able to produce), we avoid duplicating them in our own
     // diagnostics.
-    #[allow(dead_code)]
+    #[cfg_attr(not(proc_macro), expect(dead_code))]
     Macro,
 }
 
@@ -375,8 +376,18 @@ fn check_api_enum(cx: &mut Check, enm: &Enum) {
     }
 
     for derive in &enm.derives {
-        if derive.what == Trait::Default || derive.what == Trait::ExternType {
-            let msg = format!("derive({}) on shared enum is not supported", derive);
+        if derive.what == Trait::Default {
+            let default_variants = enm.variants.iter().filter(|v| v.default).count();
+            if default_variants != 1 {
+                let mut msg = Message::new();
+                write!(msg, "derive(Default) on enum requires exactly one variant to be marked with #[default]");
+                if default_variants > 0 {
+                    write!(msg, " (found {})", default_variants);
+                }
+                cx.error(derive, msg);
+            }
+        } else if derive.what == Trait::ExternType {
+            let msg = "derive(ExternType) on shared enum is not supported";
             cx.error(derive, msg);
         }
     }
