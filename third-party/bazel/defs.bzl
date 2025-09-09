@@ -299,10 +299,11 @@ _NORMAL_DEPENDENCIES = {
             "clap": Label("@vendor//:clap-4.5.47"),
             "codespan-reporting": Label("@vendor//:codespan-reporting-0.12.0"),
             "foldhash": Label("@vendor//:foldhash-0.2.0"),
-            "indexmap": Label("@vendor//:indexmap-2.11.0"),
+            "indexmap": Label("@vendor//:indexmap-2.11.1"),
             "proc-macro2": Label("@vendor//:proc-macro2-1.0.101"),
             "quote": Label("@vendor//:quote-1.0.40"),
             "scratch": Label("@vendor//:scratch-1.0.9"),
+            "serde": Label("@vendor//:serde-1.0.219"),
             "syn": Label("@vendor//:syn-2.0.106"),
         },
     },
@@ -382,7 +383,6 @@ _CONDITIONS = {
     "arm-unknown-linux-gnueabi": ["@rules_rust//rust/platform:arm-unknown-linux-gnueabi"],
     "armv7-linux-androideabi": ["@rules_rust//rust/platform:armv7-linux-androideabi"],
     "armv7-unknown-linux-gnueabi": ["@rules_rust//rust/platform:armv7-unknown-linux-gnueabi"],
-    "cfg(any())": [],
     "cfg(windows)": ["@rules_rust//rust/platform:aarch64-pc-windows-msvc", "@rules_rust//rust/platform:i686-pc-windows-msvc", "@rules_rust//rust/platform:x86_64-pc-windows-msvc"],
     "i686-apple-darwin": ["@rules_rust//rust/platform:i686-apple-darwin"],
     "i686-linux-android": ["@rules_rust//rust/platform:i686-linux-android"],
@@ -523,12 +523,12 @@ def crate_repositories():
 
     maybe(
         http_archive,
-        name = "vendor__indexmap-2.11.0",
-        sha256 = "f2481980430f9f78649238835720ddccc57e52df14ffce1c6f37391d61b563e9",
+        name = "vendor__indexmap-2.11.1",
+        sha256 = "206a8042aec68fa4a62e8d3f7aa4ceb508177d9324faf261e1959e495b7a1921",
         type = "tar.gz",
-        urls = ["https://static.crates.io/crates/indexmap/2.11.0/download"],
-        strip_prefix = "indexmap-2.11.0",
-        build_file = Label("//third-party/bazel:BUILD.indexmap-2.11.0.bazel"),
+        urls = ["https://static.crates.io/crates/indexmap/2.11.1/download"],
+        strip_prefix = "indexmap-2.11.1",
+        build_file = Label("//third-party/bazel:BUILD.indexmap-2.11.1.bazel"),
     )
 
     maybe(
@@ -676,10 +676,11 @@ def crate_repositories():
         struct(repo = "vendor__clap-4.5.47", is_dev_dep = False),
         struct(repo = "vendor__codespan-reporting-0.12.0", is_dev_dep = False),
         struct(repo = "vendor__foldhash-0.2.0", is_dev_dep = False),
-        struct(repo = "vendor__indexmap-2.11.0", is_dev_dep = False),
+        struct(repo = "vendor__indexmap-2.11.1", is_dev_dep = False),
         struct(repo = "vendor__proc-macro2-1.0.101", is_dev_dep = False),
         struct(repo = "vendor__quote-1.0.40", is_dev_dep = False),
         struct(repo = "vendor__rustversion-1.0.22", is_dev_dep = False),
         struct(repo = "vendor__scratch-1.0.9", is_dev_dep = False),
+        struct(repo = "vendor__serde-1.0.219", is_dev_dep = False),
         struct(repo = "vendor__syn-2.0.106", is_dev_dep = False),
     ]
