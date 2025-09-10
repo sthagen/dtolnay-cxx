@@ -45,7 +45,7 @@ pub mod ffi {
         msg: String,
     }
 
-    #[derive(Debug, Hash, PartialOrd, Ord, Default)]
+    #[derive(Debug, Hash, PartialOrd, Ord, Default, BitAnd, BitOr, BitXor)]
     enum Enum {
         AVal,
         #[default]
@@ -72,7 +72,7 @@ pub mod ffi {
     enum ABEnum {
         ABAVal,
         ABBVal = 2020,
-        ABCVal,
+        ABCVal = -2147483648i32,
     }
 
     #[namespace = "A::B"]
