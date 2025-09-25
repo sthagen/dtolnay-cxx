@@ -3,17 +3,19 @@ use crate::syntax::attrs::{self, OtherAttrs};
 use crate::syntax::cfg::{CfgExpr, ComputedCfg};
 use crate::syntax::file::Module;
 use crate::syntax::instantiate::{ImplKey, NamedImplKey};
+use crate::syntax::map::OrderedMap;
 use crate::syntax::message::Message;
 use crate::syntax::namespace::Namespace;
 use crate::syntax::qualified::QualifiedName;
 use crate::syntax::report::Errors;
+use crate::syntax::set::UnorderedSet;
 use crate::syntax::symbol::Symbol;
 use crate::syntax::trivial::TrivialReason;
 use crate::syntax::types::ConditionalImpl;
 use crate::syntax::unpin::UnpinReason;
 use crate::syntax::{
-    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, FnKind, Lang, Lifetimes, Pair,
-    Signature, Struct, Trait, Type, TypeAlias, Types,
+    self, check, mangle, Api, Doc, Enum, ExternFn, ExternType, FnKind, Lang, Pair, Signature,
+    Struct, Trait, Type, TypeAlias, Types,
 };
 use crate::type_id::Crate;
 use crate::{derive, generics};
@@ -21,7 +23,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use std::fmt::{self, Display};
 use std::mem;
-use syn::{parse_quote, punctuated, Generics, Lifetime, Result, Token, Visibility};
+use syn::{parse_quote, GenericParam, Generics, Lifetime, Result, Token, Visibility};
 
 pub(crate) fn bridge(mut ffi: Module) -> Result<TokenStream> {
     let ref mut errors = Errors::new();
@@ -69,6 +71,7 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
             Api::Include(_) | Api::Impl(_) => {}
             Api::Struct(strct) => {
                 expanded.extend(expand_struct(strct));
+                expanded.extend(expand_associated_functions(&strct.name.rust, types));
                 hidden.extend(expand_struct_nonempty(strct));
                 hidden.extend(expand_struct_operators(strct));
                 forbid.extend(expand_struct_forbid_drop(strct));
@@ -80,19 +83,24 @@ fn expand(ffi: Module, doc: Doc, attrs: OtherAttrs, apis: &[Api], types: &Types)
                     hidden.extend(expand_extern_shared_struct(ety, &ffi));
                 } else if !types.enums.contains_key(ident) {
                     expanded.extend(expand_cxx_type(ety));
+                    expanded.extend(expand_associated_functions(&ety.name.rust, types));
                     hidden.extend(expand_cxx_type_assert_pinned(ety, types));
                 }
             }
             Api::CxxFunction(efn) => {
-                expanded.extend(expand_cxx_function_shim(efn, types));
+                if efn.self_type().is_none() {
+                    expanded.extend(expand_cxx_function_shim(efn, types));
+                }
             }
             Api::RustType(ety) => {
                 expanded.extend(expand_rust_type_impl(ety));
+                expanded.extend(expand_associated_functions(&ety.name.rust, types));
                 hidden.extend(expand_rust_type_layout(ety, types));
             }
             Api::RustFunction(efn) => hidden.extend(expand_rust_function_shim(efn, types)),
             Api::TypeAlias(alias) => {
                 expanded.extend(expand_type_alias(alias));
+                expanded.extend(expand_associated_functions(&alias.name.rust, types));
                 hidden.extend(expand_type_alias_verify(alias, types));
             }
         }
@@ -585,8 +593,86 @@ fn expand_extern_shared_struct(ety: &ExternType, ffi: &Module) -> TokenStream {
     }
 }
 
+fn expand_associated_functions(self_type: &Ident, types: &Types) -> TokenStream {
+    let Some(functions) = types.associated_fn.get(self_type) else {
+        return TokenStream::new();
+    };
+
+    let resolve = types.resolve(self_type);
+    let self_type_cfg_attrs = resolve.attrs.cfg();
+    let elided_lifetime = Lifetime::new("'_", Span::call_site());
+    let mut group_by_lifetimes = OrderedMap::new();
+    let mut tokens = TokenStream::new();
+
+    for efn in functions {
+        match efn.lang {
+            Lang::Cxx | Lang::CxxUnwind => {}
+            Lang::Rust => continue,
+        }
+        let mut impl_lifetimes = Vec::new();
+        let mut self_type_lifetimes = Vec::new();
+        let self_lt_token;
+        let self_gt_token;
+        match &efn.kind {
+            FnKind::Method(receiver) if receiver.ty.generics.lt_token.is_some() => {
+                for lifetime in &receiver.ty.generics.lifetimes {
+                    if lifetime.ident != "_"
+                        && efn
+                            .generics
+                            .lifetimes()
+                            .any(|param| param.lifetime == *lifetime)
+                    {
+                        impl_lifetimes.push(lifetime);
+                    }
+                    self_type_lifetimes.push(lifetime);
+                }
+                self_lt_token = receiver.ty.generics.lt_token;
+                self_gt_token = receiver.ty.generics.gt_token;
+            }
+            _ => {
+                self_type_lifetimes.resize(resolve.generics.lifetimes.len(), &elided_lifetime);
+                self_lt_token = resolve.generics.lt_token;
+                self_gt_token = resolve.generics.gt_token;
+            }
+        }
+        if efn.undeclared_lifetimes().is_empty()
+            && self_type_lifetimes.len() == resolve.generics.lifetimes.len()
+        {
+            group_by_lifetimes
+                .entry((impl_lifetimes, self_type_lifetimes))
+                .or_insert_with(Vec::new)
+                .push(efn);
+        } else {
+            let impl_token = Token![impl](efn.name.rust.span());
+            let impl_lt_token = efn.generics.lt_token;
+            let impl_gt_token = efn.generics.gt_token;
+            let self_type = efn.self_type().unwrap();
+            let function = expand_cxx_function_shim(efn, types);
+            tokens.extend(quote! {
+                #self_type_cfg_attrs
+                #impl_token #impl_lt_token #(#impl_lifetimes),* #impl_gt_token #self_type #self_lt_token #(#self_type_lifetimes),* #self_gt_token {
+                    #function
+                }
+            });
+        }
+    }
+
+    for ((impl_lifetimes, self_type_lifetimes), functions) in &group_by_lifetimes {
+        let functions = functions
+            .iter()
+            .map(|efn| expand_cxx_function_shim(efn, types));
+        tokens.extend(quote! {
+            #self_type_cfg_attrs
+            impl <#(#impl_lifetimes),*> #self_type <#(#self_type_lifetimes),*> {
+                #(#functions)*
+            }
+        });
+    }
+
+    tokens
+}
+
 fn expand_cxx_function_decl(efn: &ExternFn, types: &Types) -> TokenStream {
-    let generics = &efn.generics;
     let receiver = efn.receiver().into_iter().map(|receiver| {
         if types.is_considered_improper_ctype(&receiver.ty) {
             if receiver.mutable {
@@ -628,9 +714,13 @@ fn expand_cxx_function_decl(efn: &ExternFn, types: &Types) -> TokenStream {
     }
     let link_name = mangle::extern_fn(efn, types);
     let local_name = format_ident!("__{}", efn.name.rust);
+    let lt_token = efn.generics.lt_token.unwrap_or_default();
+    let undeclared_lifetimes = efn.undeclared_lifetimes().into_iter();
+    let declared_lifetimes = &efn.generics.params;
+    let gt_token = efn.generics.gt_token.unwrap_or_default();
     quote! {
         #[link_name = #link_name]
-        fn #local_name #generics(#(#all_args,)* #outparam) #ret;
+        fn #local_name #lt_token #(#undeclared_lifetimes,)* #declared_lifetimes #gt_token(#(#all_args,)* #outparam) #ret;
     }
 }
 
@@ -868,62 +958,36 @@ fn expand_cxx_function_shim(efn: &ExternFn, types: &Types) -> TokenStream {
     let unsafety = &efn.unsafety;
     let fn_token = efn.fn_token;
     let ident = &efn.name.rust;
-    let generics = &efn.generics;
+    let lt_token = efn.generics.lt_token;
+    let lifetimes = {
+        let mut self_type_lifetimes = UnorderedSet::new();
+        if let FnKind::Method(receiver) = &efn.kind {
+            self_type_lifetimes.extend(&receiver.ty.generics.lifetimes);
+        }
+        efn.generics
+            .params
+            .pairs()
+            .filter(move |param| match param.value() {
+                GenericParam::Lifetime(param) => !self_type_lifetimes.contains(&param.lifetime),
+                GenericParam::Type(_) | GenericParam::Const(_) => unreachable!(),
+            })
+    };
+    let gt_token = efn.generics.gt_token;
     let arg_list = quote_spanned!(efn.paren_token.span=> (#(#all_args,)*));
     let calling_conv = match efn.lang {
         Lang::Cxx => quote_spanned!(span=> "C"),
         Lang::CxxUnwind => quote_spanned!(span=> "C-unwind"),
         Lang::Rust => unreachable!(),
     };
-    let fn_body = quote_spanned!(span=> {
-        #UnsafeExtern extern #calling_conv {
-            #decl
-        }
-        #trampolines
-        #dispatch
-    });
-    match efn.self_type() {
-        None => {
-            quote! {
-                #doc
-                #all_attrs
-                #visibility #unsafety #fn_token #ident #generics #arg_list #ret #fn_body
+    quote_spanned! {span=>
+        #doc
+        #all_attrs
+        #visibility #unsafety #fn_token #ident #lt_token #(#lifetimes)* #gt_token #arg_list #ret {
+            #UnsafeExtern extern #calling_conv {
+                #decl
             }
-        }
-        Some(self_type) => {
-            let elided_generics;
-            let resolve = types.resolve(self_type);
-            let self_type_cfg_attrs = resolve.attrs.cfg();
-            let self_type_generics = match &efn.kind {
-                FnKind::Method(receiver) if receiver.ty.generics.lt_token.is_some() => {
-                    &receiver.ty.generics
-                }
-                _ => {
-                    elided_generics = Lifetimes {
-                        lt_token: resolve.generics.lt_token,
-                        lifetimes: resolve
-                            .generics
-                            .lifetimes
-                            .pairs()
-                            .map(|pair| {
-                                let lifetime = Lifetime::new("'_", pair.value().apostrophe);
-                                let punct = pair.punct().map(|&&comma| comma);
-                                punctuated::Pair::new(lifetime, punct)
-                            })
-                            .collect(),
-                        gt_token: resolve.generics.gt_token,
-                    };
-                    &elided_generics
-                }
-            };
-            quote_spanned! {ident.span()=>
-                #self_type_cfg_attrs
-                impl #generics #self_type #self_type_generics {
-                    #doc
-                    #all_attrs
-                    #visibility #unsafety #fn_token #ident #arg_list #ret #fn_body
-                }
-            }
+            #trampolines
+            #dispatch
         }
     }
 }
