@@ -5,16 +5,14 @@
 //          examples:
 //             - cxxbridge1$exception
 //          defining characteristics:
-//             - 2 segments
-//             - starts with cxxbridge
+//             - 2 segments, none an integer
 //
 //   (b) Behavior on a builtin binding without generic parameter.
 //          pattern:  {CXXBRIDGE} $ {TYPE} $ {NAME}
 //          examples:
 //             - cxxbridge1$string$len
 //          defining characteristics:
-//             - 3 segments
-//             - starts with cxxbridge
+//             - 3 segments, none an integer
 //
 //   (c) Behavior on a builtin binding with generic parameter.
 //          pattern:  {CXXBRIDGE} $ {TYPE} $ {PARAM...} $ {NAME}
@@ -22,35 +20,32 @@
 //             - cxxbridge1$box$org$rust$Struct$alloc
 //             - cxxbridge1$unique_ptr$std$vector$u8$drop
 //          defining characteristics:
-//             - 4+ segments
-//             - starts with cxxbridge
+//             - 4+ segments, none an integer
 //
 //   (d) User-defined extern function.
-//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {NAME}
+//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {CXXVERSION} $ {NAME}
 //          examples:
-//             - cxxbridge1$new_client
-//             - org$rust$cxxbridge1$new_client
+//             - cxxbridge1$189$new_client
+//             - org$rust$cxxbridge1$189$new_client
 //          defining characteristics:
-//             - cxxbridge is second from end
-//          FIXME: conflict with (a) if they collide with one of our one-off symbol names in the global namespace
+//             - second segment from end is an integer
 //
 //   (e) User-defined extern member function.
-//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {TYPE} $ {NAME}
+//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {CXXVERSION} $ {TYPE} $ {NAME}
 //          examples:
-//             - org$cxxbridge1$Struct$get
+//             - org$cxxbridge1$189$Struct$get
 //          defining characteristics:
-//             - cxxbridge is third from end
-//          FIXME: conflict with (b) if e.g. user binds a type in global namespace that collides with our builtin type names
+//             - third segment from end is an integer
 //
 //   (f) Operator overload.
-//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {TYPE} $ operator $ {NAME}
+//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {CXXVERSION} $ {TYPE} $ operator $ {NAME}
 //          examples:
-//             - org$rust$cxxbridge1$Struct$operator$eq
+//             - org$rust$cxxbridge1$189$Struct$operator$eq
 //          defining characteristics:
 //             - second segment from end is `operator` (not possible in type or namespace names)
 //
 //   (g) Closure trampoline.
-//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {TYPE?} $ {NAME} $ {ARGUMENT} $ {DIRECTION}
+//          pattern:  {NAMESPACE...} $ {CXXBRIDGE} $ {CXXVERSION} $ {TYPE?} $ {NAME} $ {ARGUMENT} $ {DIRECTION}
 //          examples:
 //             - org$rust$cxxbridge1$Struct$invoke$f$0
 //          defining characteristics:
@@ -80,6 +75,7 @@ use crate::syntax::{ExternFn, Pair, Type, Types};
 use proc_macro2::Ident;
 
 const CXXBRIDGE: &str = "cxxbridge1";
+const CXXVERSION: &str = env!("CARGO_PKG_VERSION_PATCH");
 
 macro_rules! join {
     ($($segment:expr),+ $(,)?) => {
@@ -94,11 +90,12 @@ pub(crate) fn extern_fn(efn: &ExternFn, types: &Types) -> Symbol {
             join!(
                 efn.name.namespace,
                 CXXBRIDGE,
+                CXXVERSION,
                 self_type_ident.name.cxx,
                 efn.name.rust,
             )
         }
-        None => join!(efn.name.namespace, CXXBRIDGE, efn.name.rust),
+        None => join!(efn.name.namespace, CXXBRIDGE, CXXVERSION, efn.name.rust),
     }
 }
 
@@ -106,6 +103,7 @@ pub(crate) fn operator(receiver: &Pair, operator: &'static str) -> Symbol {
     join!(
         receiver.namespace,
         CXXBRIDGE,
+        CXXVERSION,
         receiver.cxx,
         "operator",
         operator,
