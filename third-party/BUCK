@@ -12,7 +12,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "anstyle-1.0.13",
+    name = "anstyle-1",
     srcs = [":anstyle-1.0.13.crate"],
     crate = "anstyle",
     crate_root = "anstyle-1.0.13.crate/src/lib.rs",
@@ -26,7 +26,7 @@ cargo.rust_library(
 
 alias(
     name = "cc",
-    actual = ":cc-1.2.53",
+    actual = ":cc-1",
     visibility = ["PUBLIC"],
 )
 
@@ -39,21 +39,21 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "cc-1.2.53",
+    name = "cc-1",
     srcs = [":cc-1.2.53.crate"],
     crate = "cc",
     crate_root = "cc-1.2.53.crate/src/lib.rs",
     edition = "2018",
     visibility = [],
     deps = [
-        ":find-msvc-tools-0.1.8",
-        ":shlex-1.3.0",
+        ":find-msvc-tools-0.1",
+        ":shlex-1",
     ],
 )
 
 alias(
     name = "clap",
-    actual = ":clap-4.5.54",
+    actual = ":clap-4",
     visibility = ["PUBLIC"],
 )
 
@@ -66,7 +66,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "clap-4.5.54",
+    name = "clap-4",
     srcs = [":clap-4.5.54.crate"],
     crate = "clap",
     crate_root = "clap-4.5.54.crate/src/lib.rs",
@@ -78,7 +78,7 @@ cargo.rust_library(
         "usage",
     ],
     visibility = [],
-    deps = [":clap_builder-4.5.54"],
+    deps = [":clap_builder-4"],
 )
 
 http_archive(
@@ -90,7 +90,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "clap_builder-4.5.54",
+    name = "clap_builder-4",
     srcs = [":clap_builder-4.5.54.crate"],
     crate = "clap_builder",
     crate_root = "clap_builder-4.5.54.crate/src/lib.rs",
@@ -103,8 +103,8 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [
-        ":anstyle-1.0.13",
-        ":clap_lex-0.7.7",
+        ":anstyle-1",
+        ":clap_lex-0.7",
     ],
 )
 
@@ -117,7 +117,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "clap_lex-0.7.7",
+    name = "clap_lex-0.7",
     srcs = [":clap_lex-0.7.7.crate"],
     crate = "clap_lex",
     crate_root = "clap_lex-0.7.7.crate/src/lib.rs",
@@ -127,7 +127,7 @@ cargo.rust_library(
 
 alias(
     name = "codespan-reporting",
-    actual = ":codespan-reporting-0.13.1",
+    actual = ":codespan-reporting-0.13",
     visibility = ["PUBLIC"],
 )
 
@@ -140,7 +140,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "codespan-reporting-0.13.1",
+    name = "codespan-reporting-0.13",
     srcs = [":codespan-reporting-0.13.1.crate"],
     crate = "codespan_reporting",
     crate_root = "codespan-reporting-0.13.1.crate/src/lib.rs",
@@ -152,8 +152,8 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [
-        ":termcolor-1.4.1",
-        ":unicode-width-0.2.2",
+        ":termcolor-1",
+        ":unicode-width-0.2",
     ],
 )
 
@@ -166,7 +166,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "equivalent-1.0.2",
+    name = "equivalent-1",
     srcs = [":equivalent-1.0.2.crate"],
     crate = "equivalent",
     crate_root = "equivalent-1.0.2.crate/src/lib.rs",
@@ -183,7 +183,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "find-msvc-tools-0.1.8",
+    name = "find-msvc-tools-0.1",
     srcs = [":find-msvc-tools-0.1.8.crate"],
     crate = "find_msvc_tools",
     crate_root = "find-msvc-tools-0.1.8.crate/src/lib.rs",
@@ -193,7 +193,7 @@ cargo.rust_library(
 
 alias(
     name = "foldhash",
-    actual = ":foldhash-0.2.0",
+    actual = ":foldhash-0.2",
     visibility = ["PUBLIC"],
 )
 
@@ -206,7 +206,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "foldhash-0.2.0",
+    name = "foldhash-0.2",
     srcs = [":foldhash-0.2.0.crate"],
     crate = "foldhash",
     crate_root = "foldhash-0.2.0.crate/src/lib.rs",
@@ -227,7 +227,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "hashbrown-0.16.1",
+    name = "hashbrown-0.16",
     srcs = [":hashbrown-0.16.1.crate"],
     crate = "hashbrown",
     crate_root = "hashbrown-0.16.1.crate/src/lib.rs",
@@ -237,7 +237,7 @@ cargo.rust_library(
 
 alias(
     name = "indexmap",
-    actual = ":indexmap-2.13.0",
+    actual = ":indexmap-2",
     visibility = ["PUBLIC"],
 )
 
@@ -250,7 +250,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "indexmap-2.13.0",
+    name = "indexmap-2",
     srcs = [":indexmap-2.13.0.crate"],
     crate = "indexmap",
     crate_root = "indexmap-2.13.0.crate/src/lib.rs",
@@ -261,14 +261,14 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [
-        ":equivalent-1.0.2",
-        ":hashbrown-0.16.1",
+        ":equivalent-1",
+        ":hashbrown-0.16",
     ],
 )
 
 alias(
     name = "proc-macro2",
-    actual = ":proc-macro2-1.0.105",
+    actual = ":proc-macro2-1",
     visibility = ["PUBLIC"],
 )
 
@@ -281,26 +281,26 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "proc-macro2-1.0.105",
+    name = "proc-macro2-1",
     srcs = [":proc-macro2-1.0.105.crate"],
     crate = "proc_macro2",
     crate_root = "proc-macro2-1.0.105.crate/src/lib.rs",
     edition = "2021",
     env = {
-        "OUT_DIR": "$(location :proc-macro2-1.0.105-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :proc-macro2-1-build-script-run[out_dir])",
     },
     features = [
         "default",
         "proc-macro",
         "span-locations",
     ],
-    rustc_flags = ["@$(location :proc-macro2-1.0.105-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :proc-macro2-1-build-script-run[rustc_flags])"],
     visibility = [],
-    deps = [":unicode-ident-1.0.22"],
+    deps = [":unicode-ident-1"],
 )
 
 cargo.rust_binary(
-    name = "proc-macro2-1.0.105-build-script-build",
+    name = "proc-macro2-1-build-script-build",
     srcs = [":proc-macro2-1.0.105.crate"],
     crate = "build_script_build",
     crate_root = "proc-macro2-1.0.105.crate/build.rs",
@@ -314,9 +314,9 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "proc-macro2-1.0.105-build-script-run",
+    name = "proc-macro2-1-build-script-run",
     package_name = "proc-macro2",
-    buildscript_rule = ":proc-macro2-1.0.105-build-script-build",
+    buildscript_rule = ":proc-macro2-1-build-script-build",
     features = [
         "default",
         "proc-macro",
@@ -327,7 +327,7 @@ buildscript_run(
 
 alias(
     name = "quote",
-    actual = ":quote-1.0.43",
+    actual = ":quote-1",
     visibility = ["PUBLIC"],
 )
 
@@ -340,25 +340,25 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "quote-1.0.43",
+    name = "quote-1",
     srcs = [":quote-1.0.43.crate"],
     crate = "quote",
     crate_root = "quote-1.0.43.crate/src/lib.rs",
     edition = "2021",
     env = {
-        "OUT_DIR": "$(location :quote-1.0.43-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :quote-1-build-script-run[out_dir])",
     },
     features = [
         "default",
         "proc-macro",
     ],
-    rustc_flags = ["@$(location :quote-1.0.43-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :quote-1-build-script-run[rustc_flags])"],
     visibility = [],
-    deps = [":proc-macro2-1.0.105"],
+    deps = [":proc-macro2-1"],
 )
 
 cargo.rust_binary(
-    name = "quote-1.0.43-build-script-build",
+    name = "quote-1-build-script-build",
     srcs = [":quote-1.0.43.crate"],
     crate = "build_script_build",
     crate_root = "quote-1.0.43.crate/build.rs",
@@ -371,9 +371,9 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "quote-1.0.43-build-script-run",
+    name = "quote-1-build-script-run",
     package_name = "quote",
-    buildscript_rule = ":quote-1.0.43-build-script-build",
+    buildscript_rule = ":quote-1-build-script-build",
     features = [
         "default",
         "proc-macro",
@@ -383,7 +383,7 @@ buildscript_run(
 
 alias(
     name = "rustversion",
-    actual = ":rustversion-1.0.22",
+    actual = ":rustversion-1",
     visibility = ["PUBLIC"],
 )
 
@@ -396,21 +396,21 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "rustversion-1.0.22",
+    name = "rustversion-1",
     srcs = [":rustversion-1.0.22.crate"],
     crate = "rustversion",
     crate_root = "rustversion-1.0.22.crate/src/lib.rs",
     edition = "2018",
     env = {
-        "OUT_DIR": "$(location :rustversion-1.0.22-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :rustversion-1-build-script-run[out_dir])",
     },
     proc_macro = True,
-    rustc_flags = ["@$(location :rustversion-1.0.22-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :rustversion-1-build-script-run[rustc_flags])"],
     visibility = [],
 )
 
 cargo.rust_binary(
-    name = "rustversion-1.0.22-build-script-build",
+    name = "rustversion-1-build-script-build",
     srcs = [":rustversion-1.0.22.crate"],
     crate = "build_script_build",
     crate_root = "rustversion-1.0.22.crate/build/build.rs",
@@ -419,15 +419,15 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "rustversion-1.0.22-build-script-run",
+    name = "rustversion-1-build-script-run",
     package_name = "rustversion",
-    buildscript_rule = ":rustversion-1.0.22-build-script-build",
+    buildscript_rule = ":rustversion-1-build-script-build",
     version = "1.0.22",
 )
 
 alias(
     name = "scratch",
-    actual = ":scratch-1.0.9",
+    actual = ":scratch-1",
     visibility = ["PUBLIC"],
 )
 
@@ -440,20 +440,20 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "scratch-1.0.9",
+    name = "scratch-1",
     srcs = [":scratch-1.0.9.crate"],
     crate = "scratch",
     crate_root = "scratch-1.0.9.crate/src/lib.rs",
     edition = "2015",
     env = {
-        "OUT_DIR": "$(location :scratch-1.0.9-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :scratch-1-build-script-run[out_dir])",
     },
-    rustc_flags = ["@$(location :scratch-1.0.9-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :scratch-1-build-script-run[rustc_flags])"],
     visibility = [],
 )
 
 cargo.rust_binary(
-    name = "scratch-1.0.9-build-script-build",
+    name = "scratch-1-build-script-build",
     srcs = [":scratch-1.0.9.crate"],
     crate = "build_script_build",
     crate_root = "scratch-1.0.9.crate/build.rs",
@@ -462,15 +462,15 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "scratch-1.0.9-build-script-run",
+    name = "scratch-1-build-script-run",
     package_name = "scratch",
-    buildscript_rule = ":scratch-1.0.9-build-script-build",
+    buildscript_rule = ":scratch-1-build-script-build",
     version = "1.0.9",
 )
 
 alias(
     name = "serde",
-    actual = ":serde-1.0.228",
+    actual = ":serde-1",
     visibility = ["PUBLIC"],
 )
 
@@ -483,14 +483,14 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "serde-1.0.228",
+    name = "serde-1",
     srcs = [":serde-1.0.228.crate"],
     crate = "serde",
     crate_root = "serde-1.0.228.crate/src/lib.rs",
     edition = "2021",
     env = {
         "CARGO_PKG_VERSION_PATCH": "228",
-        "OUT_DIR": "$(location :serde-1.0.228-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :serde-1-build-script-run[out_dir])",
     },
     features = [
         "default",
@@ -498,16 +498,16 @@ cargo.rust_library(
         "serde_derive",
         "std",
     ],
-    rustc_flags = ["@$(location :serde-1.0.228-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :serde-1-build-script-run[rustc_flags])"],
     visibility = [],
     deps = [
-        ":serde_core-1.0.228",
-        ":serde_derive-1.0.228",
+        ":serde_core-1",
+        ":serde_derive-1",
     ],
 )
 
 cargo.rust_binary(
-    name = "serde-1.0.228-build-script-build",
+    name = "serde-1-build-script-build",
     srcs = [":serde-1.0.228.crate"],
     crate = "build_script_build",
     crate_root = "serde-1.0.228.crate/build.rs",
@@ -525,9 +525,9 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "serde-1.0.228-build-script-run",
+    name = "serde-1-build-script-run",
     package_name = "serde",
-    buildscript_rule = ":serde-1.0.228-build-script-build",
+    buildscript_rule = ":serde-1-build-script-build",
     env = {
         "CARGO_PKG_VERSION_PATCH": "228",
     },
@@ -549,25 +549,25 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "serde_core-1.0.228",
+    name = "serde_core-1",
     srcs = [":serde_core-1.0.228.crate"],
     crate = "serde_core",
     crate_root = "serde_core-1.0.228.crate/src/lib.rs",
     edition = "2021",
     env = {
         "CARGO_PKG_VERSION_PATCH": "228",
-        "OUT_DIR": "$(location :serde_core-1.0.228-build-script-run[out_dir])",
+        "OUT_DIR": "$(location :serde_core-1-build-script-run[out_dir])",
     },
     features = [
         "result",
         "std",
     ],
-    rustc_flags = ["@$(location :serde_core-1.0.228-build-script-run[rustc_flags])"],
+    rustc_flags = ["@$(location :serde_core-1-build-script-run[rustc_flags])"],
     visibility = [],
 )
 
 cargo.rust_binary(
-    name = "serde_core-1.0.228-build-script-build",
+    name = "serde_core-1-build-script-build",
     srcs = [":serde_core-1.0.228.crate"],
     crate = "build_script_build",
     crate_root = "serde_core-1.0.228.crate/build.rs",
@@ -583,9 +583,9 @@ cargo.rust_binary(
 )
 
 buildscript_run(
-    name = "serde_core-1.0.228-build-script-run",
+    name = "serde_core-1-build-script-run",
     package_name = "serde_core",
-    buildscript_rule = ":serde_core-1.0.228-build-script-build",
+    buildscript_rule = ":serde_core-1-build-script-build",
     env = {
         "CARGO_PKG_VERSION_PATCH": "228",
     },
@@ -605,7 +605,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "serde_derive-1.0.228",
+    name = "serde_derive-1",
     srcs = [":serde_derive-1.0.228.crate"],
     crate = "serde_derive",
     crate_root = "serde_derive-1.0.228.crate/src/lib.rs",
@@ -617,9 +617,9 @@ cargo.rust_library(
     proc_macro = True,
     visibility = [],
     deps = [
-        ":proc-macro2-1.0.105",
-        ":quote-1.0.43",
-        ":syn-2.0.114",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":syn-2",
     ],
 )
 
@@ -632,7 +632,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "shlex-1.3.0",
+    name = "shlex-1",
     srcs = [":shlex-1.3.0.crate"],
     crate = "shlex",
     crate_root = "shlex-1.3.0.crate/src/lib.rs",
@@ -646,7 +646,7 @@ cargo.rust_library(
 
 alias(
     name = "syn",
-    actual = ":syn-2.0.114",
+    actual = ":syn-2",
     visibility = ["PUBLIC"],
 )
 
@@ -659,7 +659,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "syn-2.0.114",
+    name = "syn-2",
     srcs = [":syn-2.0.114.crate"],
     crate = "syn",
     crate_root = "syn-2.0.114.crate/src/lib.rs",
@@ -675,9 +675,9 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [
-        ":proc-macro2-1.0.105",
-        ":quote-1.0.43",
-        ":unicode-ident-1.0.22",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":unicode-ident-1",
     ],
 )
 
@@ -690,17 +690,17 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "termcolor-1.4.1",
+    name = "termcolor-1",
     srcs = [":termcolor-1.4.1.crate"],
     crate = "termcolor",
     crate_root = "termcolor-1.4.1.crate/src/lib.rs",
     edition = "2018",
     platform = {
         "windows-gnu": dict(
-            deps = [":winapi-util-0.1.11"],
+            deps = [":winapi-util-0.1"],
         ),
         "windows-msvc": dict(
-            deps = [":winapi-util-0.1.11"],
+            deps = [":winapi-util-0.1"],
         ),
     },
     visibility = [],
@@ -715,7 +715,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "unicode-ident-1.0.22",
+    name = "unicode-ident-1",
     srcs = [":unicode-ident-1.0.22.crate"],
     crate = "unicode_ident",
     crate_root = "unicode-ident-1.0.22.crate/src/lib.rs",
@@ -732,7 +732,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "unicode-width-0.2.2",
+    name = "unicode-width-0.2",
     srcs = [":unicode-width-0.2.2.crate"],
     crate = "unicode_width",
     crate_root = "unicode-width-0.2.2.crate/src/lib.rs",
@@ -753,14 +753,14 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "winapi-util-0.1.11",
+    name = "winapi-util-0.1",
     srcs = [":winapi-util-0.1.11.crate"],
     crate = "winapi_util",
     crate_root = "winapi-util-0.1.11.crate/src/lib.rs",
     edition = "2021",
     target_compatible_with = ["prelude//os:windows"],
     visibility = [],
-    deps = [":windows-sys-0.61.2"],
+    deps = [":windows-sys-0.61"],
 )
 
 http_archive(
@@ -772,7 +772,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "windows-link-0.2.1",
+    name = "windows-link-0.2",
     srcs = [":windows-link-0.2.1.crate"],
     crate = "windows_link",
     crate_root = "windows-link-0.2.1.crate/src/lib.rs",
@@ -789,7 +789,7 @@ http_archive(
 )
 
 cargo.rust_library(
-    name = "windows-sys-0.61.2",
+    name = "windows-sys-0.61",
     srcs = [":windows-sys-0.61.2.crate"],
     crate = "windows_sys",
     crate_root = "windows-sys-0.61.2.crate/src/lib.rs",
@@ -806,5 +806,5 @@ cargo.rust_library(
     ],
     target_compatible_with = ["prelude//os:windows"],
     visibility = [],
-    deps = [":windows-link-0.2.1"],
+    deps = [":windows-link-0.2"],
 )
