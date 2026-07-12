@@ -180,12 +180,7 @@ jobs:
         with:
           targets: wasm32-unknown-emscripten
           components: rust-src
-      - name: Disable initramfs update
-        run: sudo sed -i 's/^update_initramfs=yes$/update_initramfs=no/' /etc/initramfs-tools/update-initramfs.conf
-      - name: Disable man-db update
-        run: sudo rm -f /var/lib/man-db/auto-update
-      - name: Install emscripten
-        run: sudo apt-get install emscripten
+      - uses: emscripten-core/setup-emsdk@v16
       - run: cargo build --target=wasm32-unknown-emscripten --manifest-path=demo/Cargo.toml --release -Zbuild-std
         env:
           RUSTFLAGS: -Clink-arg=--emrun ${{env.RUSTFLAGS}}
@@ -254,6 +249,21 @@ jobs:
         run: git diff --exit-code
         if: matrix.os == 'ubuntu' || matrix.os == 'macos'
 
+  buildifier:
+    name: Buildifier
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: go install github.com/bazelbuild/buildtools/buildifier@latest
+      - run: echo $(go env GOPATH)/bin >> $GITHUB_PATH
+      - run: git ls-files '*.bzl' '*.bazel' | xargs buildifier
+      - run: git ls-files ':(glob)**/BUCK' | xargs -n1 buildifier -path BUILD.bazel -lint fix
+      - name: Check that buildifier wanted no changes
+        run: git diff --exit-code
+
   minimal:
     name: Minimal versions
     needs: pre_ci
@@ -285,6 +295,20 @@ jobs:
       - run: cargo docs-rs -p cxx-gen
       - run: cargo docs-rs -p cxxbridge-flags
       - run: cargo docs-rs -p cxxbridge-macro
+
+  miri:
+    name: Miri
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@miri
+      - run: cargo miri setup
+      - run: cargo miri test --test=cxx_string
+        env:
+          MIRIFLAGS: -Zmiri-strict-provenance
 
   clippy:
     name: Clippy
