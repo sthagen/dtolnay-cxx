@@ -7,11 +7,12 @@
 //! [dtolnay/cxx#235]: https://github.com/dtolnay/cxx/issues/235
 //! [https://github.com/google/autocxx]: https://github.com/google/autocxx
 
-#![doc(html_root_url = "https://docs.rs/cxx-gen/0.7.198")]
+#![doc(html_root_url = "https://docs.rs/cxx-gen/0.7.199")]
 #![deny(missing_docs)]
 #![expect(dead_code)]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
+    clippy::assert_is_empty,
     clippy::cast_sign_loss,
     clippy::default_trait_access,
     clippy::elidable_lifetime_names,
