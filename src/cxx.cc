@@ -8,6 +8,10 @@
 #include <bit>
 #endif
 
+#if __cplusplus >= 202002L
+#include <ranges>
+#endif
+
 // Most compilers set __cpp_attributes on C++11 and up, and set __cpp_exceptions
 // if the flag `-fno-exceptions` is not set. On these compilers we detect
 // `-fno-exceptions` this way.
@@ -492,6 +496,13 @@ static_assert(std::is_trivially_move_assignable<Slice<std::uint8_t>>::value,
 static_assert(std::is_trivially_destructible<Slice<std::uint8_t>>::value,
               "trivial ~Slice()");
 
+#if __cplusplus >= 202002L
+static_assert(std::ranges::contiguous_range<rust::Slice<const uint8_t>>);
+static_assert(std::contiguous_iterator<rust::Slice<const uint8_t>::iterator>);
+static_assert(std::ranges::borrowed_range<rust::Slice<const uint8_t>>);
+static_assert(std::ranges::view<rust::Slice<const uint8_t>>);
+#endif
+
 static_assert(std::is_same<Vec<std::uint8_t>::const_iterator,
                            Vec<const std::uint8_t>::iterator>::value,
               "Vec<T>::const_iterator == Vec<const T>::iterator");
@@ -680,14 +691,14 @@ static_assert(sizeof(std::string) <= kMaxExpectedWordsInString * sizeof(void *),
       std::vector<CXX_TYPE> *raw) noexcept {                                   \
     new (ptr) std::unique_ptr<std::vector<CXX_TYPE>>(raw);                     \
   }                                                                            \
-  const std::vector<CXX_TYPE>                                                  \
-      *cxxbridge1$unique_ptr$std$vector$##RUST_TYPE##$get(                     \
-          const std::unique_ptr<std::vector<CXX_TYPE>> &ptr) noexcept {        \
+  const std::vector<CXX_TYPE> *                                                \
+  cxxbridge1$unique_ptr$std$vector$##RUST_TYPE##$get(                          \
+      const std::unique_ptr<std::vector<CXX_TYPE>> &ptr) noexcept {            \
     return ptr.get();                                                          \
   }                                                                            \
-  std::vector<CXX_TYPE>                                                        \
-      *cxxbridge1$unique_ptr$std$vector$##RUST_TYPE##$release(                 \
-          std::unique_ptr<std::vector<CXX_TYPE>> &ptr) noexcept {              \
+  std::vector<CXX_TYPE> *                                                      \
+  cxxbridge1$unique_ptr$std$vector$##RUST_TYPE##$release(                      \
+      std::unique_ptr<std::vector<CXX_TYPE>> &ptr) noexcept {                  \
     return ptr.release();                                                      \
   }                                                                            \
   void cxxbridge1$unique_ptr$std$vector$##RUST_TYPE##$drop(                    \

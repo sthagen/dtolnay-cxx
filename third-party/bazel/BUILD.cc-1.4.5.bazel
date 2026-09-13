@@ -106,9 +106,9 @@ rust_library(
         "@rules_rust//rust/platform:x86_64-unknown-uefi": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    version = "1.4.2",
+    version = "1.4.5",
     deps = [
-        "@vendor__find-msvc-tools-0.1.10//:find_msvc_tools",
+        "@vendor__find-msvc-tools-0.1.12//:find_msvc_tools",
         "@vendor__shlex-2.0.1//:shlex",
     ],
 )

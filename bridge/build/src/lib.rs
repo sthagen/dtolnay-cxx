@@ -44,7 +44,7 @@
 //! $ cxxbridge src/main.rs > path/to/mybridge.cc
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.199")]
+#![doc(html_root_url = "https://docs.rs/cxx-build/1.0.202")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
     clippy::assert_is_empty,
@@ -384,12 +384,15 @@ fn make_include_dir(prj: &Project) -> Result<PathBuf> {
     let include_dir = prj.out_dir.join("cxxbridge").join("include");
     let cxx_h = include_dir.join("rust").join("cxx.h");
     let ref shared_cxx_h = prj.shared_dir.join("rust").join("cxx.h");
-    if let Some(ref original) = env::var_os("DEP_CXXBRIDGE1_HEADER") {
-        out::absolute_symlink_file(original, cxx_h)?;
-        out::absolute_symlink_file(original, shared_cxx_h)?;
-    } else {
-        out::write(shared_cxx_h, bridge::include::HEADER.as_bytes())?;
+    if let Some(original) = env::var_os("DEP_CXXBRIDGE1_HEADER") {
+        out::absolute_symlink_file(&original, cxx_h)?;
+        let _ = out::absolute_symlink_file(&original, shared_cxx_h);
+    } else if out::write(shared_cxx_h, bridge::include::HEADER.as_bytes()).is_ok() {
         out::relative_symlink_file(shared_cxx_h, cxx_h)?;
+    } else {
+        // The shared directory is only a debugging convenience and may not be
+        // writable, for example when the build script runs in a sandbox.
+        out::write(cxx_h, bridge::include::HEADER.as_bytes())?;
     }
     Ok(include_dir)
 }
