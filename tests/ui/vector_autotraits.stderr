@@ -14,6 +14,9 @@ note: required because it appears within the type `cxx::private::Opaque`
 note: required because it appears within the type `NotThreadSafe`
   --> tests/ui/vector_autotraits.rs:7:14
    |
+ 3 | #[cxx::bridge]
+   | -------------- required by this field
+...
  7 |         type NotThreadSafe;
    |              ^^^^^^^^^^^^^
    = note: required because it appears within the type `[NotThreadSafe]`
